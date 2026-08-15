@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------
+# Terraform
+# ----------------------------------------------------------------------
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*tfplan*
+.terraformrc
+terraform.rc
+
+# ----------------------------------------------------------------------
+# Rust (Cargo) & Terraform Build Artifacts
+# ----------------------------------------------------------------------
+/backend/target/
+**/*.rs.bk
+*.zip
+
+# ----------------------------------------------------------------------
+# Node.js / React (Vite)
+# ----------------------------------------------------------------------
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/*.local
+.env
+.env.*
+!.env.example
+
+# ----------------------------------------------------------------------
+# OS / IDE
+# ----------------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
