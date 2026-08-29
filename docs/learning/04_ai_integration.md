@@ -11,10 +11,10 @@
 AWS Lambda (Rust) からGemini APIを呼び出す具体的な実装手順。
 
 - **HTTPクライアント**: `reqwest` クレートを使用して非同期HTTPリクエストを行う。
-- **リクエストの構築**:
-  - `system_instruction`: AIに「どのような役割として振る舞うか」「必ず指定したJSONスキーマで返すこと」などのシステム指示を設定。
-  - `contents`: ユーザーの選択したレベルやトピックに基づくプロンプトを設定。
-  - `response_mime_type`: 強制的にJSONで返答させるため `application/json` を指定。
+- **ハイブリッド方式（2ステップ処理）**:
+  コストと精度のバランスを取るため、2つのアクションを使い分ける。
+  1. `action: "generate"` (標準モデル + Google Search): 質の高い最新の英語記事を生成。
+  2. `action: "analyze"` (Liteモデル): 生成された記事を構文解析し、スラッシュリーディングとキーワードを抽出。
 
 - **実装イメージ**:
   ```rust
@@ -45,4 +45,4 @@ AWS Lambda (Rust) からGemini APIを呼び出す具体的な実装手順。
   ```
 
 - **データの流れ**: 
-  API Gateway経由でフロントエンドから「トピック名」を受け取り、Rust内でGemini APIを呼び出す。得られた結果をDynamoDBに保存し、そのままフロントエンドにJSONとして返却して画面に表示させる。
+  API Gateway経由でフロントエンドからアクション種別（generate/analyze）とトピック名等を受け取り、Rust内でGemini APIを呼び出す。得られたJSON結果をフロントエンドに返却し、画面に表示させる。

@@ -12,7 +12,8 @@ graph TD
 
     Client -- "HTTPS / REST<br/>(Header: x-api-key)" --> API_Gateway
     API_Gateway -- "invoke<br/>(API Key検証)" --> Lambda
-    Lambda -- "1リクエストで一括生成" --> Gemini
+    Lambda -- "1. Generate (Flash + Search)" --> Gemini
+    Lambda -- "2. Analyze (Lite, No Search)" --> Gemini
     Lambda -- "単語帳・トピック保存" --> DynamoDB
     Lambda -- "APIキー読込" --> SSM
 

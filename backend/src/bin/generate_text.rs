@@ -1,7 +1,7 @@
 use aws_sdk_ssm::Client as SsmClient;
 use lambda_http::{Body, Error, Request, RequestPayloadExt, Response, run, service_fn};
 use reqwest::Client as HttpClient;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -188,11 +188,20 @@ You MUST output strictly in valid JSON format matching this schema exactly:
             if resp.status().is_success() {
                 let gemini_resp: GeminiResponse = resp.json().await?;
                 // AIが返してきた文字列（JSONとして指示したので中身はJSON文字列のはず）
-                let generated_json_text = gemini_resp.candidates
+                let mut generated_json_text = gemini_resp.candidates
                     .and_then(|c| c.into_iter().next())
                     .and_then(|c| c.content.parts.into_iter().next())
                     .map(|p| p.text)
                     .unwrap_or_else(|| "{}".to_string());
+
+                // LLMがマークダウンブロック(```json)や余計な挨拶を含めてしまった場合、JSONの波括弧部分だけを抽出する
+                if let Some(start) = generated_json_text.find('{') {
+                    if let Some(end) = generated_json_text.rfind('}') {
+                        if start <= end {
+                            generated_json_text = generated_json_text[start..=end].to_string();
+                        }
+                    }
+                }
 
                 // AIの返答（JSON文字列）を任意のJSON Valueにパースする
                 let out: serde_json::Value = serde_json::from_str(&generated_json_text).unwrap_or_else(|_| {

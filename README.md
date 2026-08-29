@@ -1,7 +1,7 @@
 # AI English Learner (ENG-APP) 🚀
 
-AI（Google Gemini 1.5 Flash）を活用した、サーバーレスな次世代英語学習アプリケーションです。
-長文読解、構文解説、重要単語の抽出などを一瞬で生成し、学習を強力にサポートします。
+AI（Google Gemini 1.5 Flash）を活用した、サーバーレスな次世代英語学習アプリケーションである。
+長文読解、構文解説、重要単語の抽出などを一瞬で生成し、学習を強力にサポートする。
 
 ## 🌟 特徴
 
@@ -30,11 +30,4 @@ AI（Google Gemini 1.5 Flash）を活用した、サーバーレスな次世代�
 
 ## 📚 開発ドキュメント
 
-開発に関する知見やAWSインフラの設計意図などは、`docs/learning/` フォルダ配下の勉強メモに詳細にまとめられています。
-
-- [00_index.md](./docs/learning/00_index.md) - システム概要とアーキテクチャ図
-- [01_terraform_infrastructure.md](./docs/learning/01_terraform_infrastructure.md) - AWSインフラとIaC
-- [02_rust_backend.md](./docs/learning/02_rust_backend.md) - Rust実装とDynamoDB設計
-- [03_frontend_react.md](./docs/learning/03_frontend_react.md) - UIデザインとセキュリティ
-- [04_ai_integration.md](./docs/learning/04_ai_integration.md) - AI連携の組み込み
-- [05_cost_optimization.md](./docs/learning/05_cost_optimization.md) - 月額無料化戦略
+開発に関する知見やAWSインフラの設計意図などは、`docs/learning/` フォルダ配下の勉強メモに詳細にまとめられている。

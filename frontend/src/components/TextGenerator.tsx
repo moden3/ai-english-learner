@@ -5,7 +5,7 @@ import type { Topic, GenerateResult, AnalyzeResult } from '../api';
 export default function TextGenerator() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
-  const [useLiteModel, setUseLiteModel] = useState<boolean>(true);
+  const [useAdvancedModel, setUseAdvancedModel] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
@@ -38,7 +38,7 @@ export default function TextGenerator() {
     setAnalysisResult(null);
     setActiveTab('original');
     try {
-      const res = await generateText(topicToUse, useLiteModel);
+      const res = await generateText(topicToUse, !useAdvancedModel);
       setResult(res);
     } catch (err) {
       console.error(err);
@@ -104,13 +104,13 @@ export default function TextGenerator() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
         <input 
           type="checkbox" 
-          id="useLiteModel" 
-          checked={useLiteModel} 
-          onChange={e => setUseLiteModel(e.target.checked)}
+          id="useAdvancedModel" 
+          checked={useAdvancedModel} 
+          onChange={e => setUseAdvancedModel(e.target.checked)}
           style={{ width: '16px', height: '16px', cursor: 'pointer' }}
         />
-        <label htmlFor="useLiteModel" style={{ cursor: 'pointer' }}>
-          Use Fast/Lite AI (No Search, 500 requests/day)
+        <label htmlFor="useAdvancedModel" style={{ cursor: 'pointer' }}>
+          🌐 高度なAIモデルを使用する (Google検索有効)
         </label>
       </div>
 
