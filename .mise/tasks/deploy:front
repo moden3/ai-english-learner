@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# mise description="Build and deploy frontend to S3/CloudFront"
+set -e
+
+cd frontend
+echo "🔨 Building frontend..."
+npm run build
+
+echo "☁️ Fetching terraform outputs..."
+cd ../backend/infra
+BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
+CF_ID=$(terraform output -raw cloudfront_distribution_id)
+cd ../../frontend
+
+echo "📤 Syncing to S3 bucket: ${BUCKET_NAME}..."
+aws s3 sync dist/ s3://${BUCKET_NAME} --delete
+
+echo "🔄 Invalidating CloudFront cache (${CF_ID})..."
+aws cloudfront create-invalidation --distribution-id ${CF_ID} --paths "/*"
+
+echo "✅ Frontend deployment complete!"

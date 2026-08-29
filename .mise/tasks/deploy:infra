@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# mise description="Deploy AWS infrastructure using Terraform"
+set -e
+
+echo "🦀 Building Rust Lambda functions..."
+cd backend
+cargo lambda build --release
+
+echo "☁️ Applying Terraform..."
+cd infra
+terraform apply -auto-approve
+
+echo "✅ Infrastructure deployment complete!"

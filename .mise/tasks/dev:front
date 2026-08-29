@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# mise description="Run frontend dev server"
+cd frontend
+npm run dev

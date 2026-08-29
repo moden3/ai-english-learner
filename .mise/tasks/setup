@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# mise description="Install frontend dependencies and init terraform"
+set -e
+
+echo "📦 Installing frontend dependencies..."
+cd frontend
+npm install
+
+echo "☁️ Initializing terraform..."
+cd ../backend/infra
+terraform init
+
+echo "✅ Setup complete!"

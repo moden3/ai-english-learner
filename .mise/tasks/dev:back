@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# mise description="Run backend local API server"
+cd backend
+cargo lambda watch --env-file .env

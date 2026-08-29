@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# mise description="Deploy infrastructure, then frontend"
+set -e
+
+mise run deploy:infra
+mise run deploy:front
+
+echo "🎉 All deployments completed successfully!"

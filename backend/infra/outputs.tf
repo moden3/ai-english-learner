@@ -12,3 +12,8 @@ output "frontend_bucket_name" {
   description = "S3 Bucket name for frontend static files"
   value       = aws_s3_bucket.frontend.bucket
 }
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront Distribution ID for invalidation"
+  value       = aws_cloudfront_distribution.frontend.id
+}

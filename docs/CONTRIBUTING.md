@@ -7,19 +7,22 @@
 
 開発にあたり、以下のツールが必要である。
 
-### 1.1 Terraform
-AWSリソースをコード（IaC）で管理するためのツールである。
+### 1.1 mise (タスク・環境管理ツール)
+本プロジェクトでは、開発コマンドの実行および各種ツール（Node.js, Terraform）のバージョン管理に `mise` を使用する。
+以下のコマンドでインストールすること。
 ```bash
-sudo snap install terraform --classic
-terraform --version
+curl https://mise.run | sh
+# Macの場合は brew install mise も可能
 ```
+> インストール後、`mise` コマンドが認識されない場合は、シェルの設定ファイル（`.bashrc` や `.zshrc` など）にパスを追加するか、ターミナルを再起動してください。
+> 参考: `echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc`
 
 ### 1.2 Cargo Lambda
 RustでAWS Lambda関数をビルド・ローカルテストするためのツールである。
 （事前に `cargo` がインストールされている必要がある）
 ```bash
 pip3 install cargo-lambda
-# またはMacの場合は `brew tap cargo-lambda/cargo-lambda && brew install cargo-lambda`
+# またはMacの場合は brew tap cargo-lambda/cargo-lambda && brew install cargo-lambda
 ```
 
 > **PATHの設定について（Linux環境等でのエラー対策）**
@@ -28,8 +31,7 @@ pip3 install cargo-lambda
 > export PATH="$HOME/.local/bin:$PATH"
 > ```
 
-### 1.3 Node.js & npm
-フロントエンド開発（Vite + React）に使用する。適宜インストールすること。
+※ **Node.js** と **Terraform** については、`mise` を通じて自動で適切なバージョンがインストールされるため、手動でのインストールは不要である。
 
 ---
 
@@ -48,11 +50,10 @@ export AWS_DEFAULT_REGION="ap-northeast-1"
 
 ## 3. プロジェクトのセットアップ (ローカル環境)
 
-フロントエンドの依存関係をインストールする。
+依存関係のインストールやTerraformの初期化を行う。
 
 ```bash
-cd frontend
-npm install
+mise run setup
 ```
 
 ---
@@ -61,12 +62,13 @@ npm install
 
 AWSへデプロイする前に、ローカルエミュレーターを用いて結合テストを行うことができる。
 
-### 4.1 バックエンドのローカル起動
-`backend` ディレクトリで以下のコマンドを実行し、ローカルAPIサーバー (`http://localhost:9000`) を立ち上げる。
+### 4.1 ローカルサーバーの起動
+以下のコマンドで、バックエンド（API）とフロントエンドの開発サーバーを同時に起動できる。
+
 ```bash
-cd backend
-cargo lambda watch --env-file .env
+mise run dev:all
 ```
+※バックエンド単体を起動したい場合は `mise run dev:back`、フロント単体の場合は `mise run dev:front` を使用する。
 
 ### 4.2 環境変数 (.env) の設定
 ローカルで動作させる場合、フロントエンドとバックエンドそれぞれのディレクトリに `.env` ファイルを作成（または修正）し、以下のように設定すること。
@@ -86,46 +88,24 @@ USE_MOCK_AI=true
 > 2. フロントエンドで入力したトピック名が `test` または `dummy` で始まる場合
 > 3. AWS Systems Manager (SSM) からAPIキーが取得できない場合
 
-### 4.3 フロントエンドのローカル起動
-別のターミナルを開き、フロントエンドを立ち上げる。
-```bash
-cd frontend
-npm run dev
-```
 ブラウザで `http://localhost:5173` にアクセスし、正常に動作するか確認すること。
-（※確認が終わったら `.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
+（※確認が終わったら `frontend/.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
 
 ---
 
 ## 5. 本番環境 (AWS) へのデプロイ
 
-動作確認が完了したら、実際にAWS環境へデプロイする。以下の手順でバックエンド・インフラ・フロントエンドをデプロイする。
+動作確認が完了したら、実際にAWS環境へデプロイする。
+本プロジェクトでは、インフラの適用（Terraform）とフロントエンドのビルド＆デプロイを以下のコマンド一発で全自動実行できる。
 
-### 5.1 バックエンド（Lambda）のビルド
 ```bash
-cd backend
-cargo lambda build --release
+# ※デプロイ前に frontend/.env の VITE_API_URL が api_gateway_url になっているか確認
+mise run deploy:all
 ```
 
-### 5.2 インフラストラクチャの適用 (Terraform)
-ビルドしたLambdaと各種AWSリソース（S3, API Gateway, DynamoDBなど）を作成・更新する。
-```bash
-cd backend/infra
-terraform init  # 初回のみ
-terraform apply
-```
-適用が完了すると、コンソールに以下の値が出力される。
-- `api_gateway_url`: APIのエンドポイント（`frontend/.env` で使用）
-- `frontend_bucket_name`: フロントエンド用S3バケット名
-- `cloudfront_url`: 公開用URL
-
-### 5.3 フロントエンドのビルドとS3アップロード
-```bash
-cd frontend
-# 本番デプロイ時は .env の VITE_API_URL が api_gateway_url になっているか確認
-npm run build
-aws s3 sync dist/ s3://<確認したバケット名> --delete
-```
+> **各デプロイを個別に行いたい場合**
+> - バックエンド・インフラのみ: `mise run deploy:infra`
+> - フロントエンドのみ: `mise run deploy:front`
 
 ### 5.4 AWS環境の設定 (APIキー)
 デプロイ後、AWSコンソールで Systems Manager (パラメーターストア) を開き、設定を行う。
