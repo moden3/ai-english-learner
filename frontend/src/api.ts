@@ -80,5 +80,30 @@ export interface GenerateResult {
 export const generateText = (topic_name: string, use_lite_model: boolean = true) => 
   fetchWithAuth('/generate_text', { 
     method: 'POST', 
-    body: JSON.stringify({ topic_name, use_lite_model }) 
+    body: JSON.stringify({ topic_name, use_lite_model, action: 'generate' }) 
   }) as Promise<GenerateResult>;
+
+export interface AnalyzeSegment {
+  id: number;
+  text: string;
+  translation: string;
+  grammar_note: string;
+}
+
+export interface AnalyzeKeyword {
+  word: string;
+  meaning: string;
+  part_of_speech: string;
+  example: string;
+}
+
+export interface AnalyzeResult {
+  segments: AnalyzeSegment[];
+  keywords: AnalyzeKeyword[];
+}
+
+export const analyzeText = (text: string) => 
+  fetchWithAuth('/generate_text', { 
+    method: 'POST', 
+    body: JSON.stringify({ action: 'analyze', text, use_lite_model: true }) 
+  }) as Promise<AnalyzeResult>;

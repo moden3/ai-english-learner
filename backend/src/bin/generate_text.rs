@@ -7,16 +7,10 @@ use std::sync::Arc;
 
 #[derive(Deserialize, Debug)]
 struct GenerateRequest {
-    topic_name: String,
+    topic_name: Option<String>,
     use_lite_model: Option<bool>,
-}
-
-// クライアントへ返す最終的なレスポンス構造体
-// （AIにもこのJSONの形式で回答を作成してもらいます）
-#[derive(Serialize, Deserialize, Debug)]
-struct GeneratedResult {
-    text: String,
-    source_url: Option<String>,
+    action: Option<String>,
+    text: Option<String>,
 }
 
 // --- Gemini API からのレスポンスをパースするための構造体群 ---
@@ -83,36 +77,77 @@ async fn function_handler(
     // 1. 環境変数 USE_MOCK_AI が設定されている
     // 2. トピック名が "test" または "dummy" で始まる
     // 3. SSMからAPIキーが取得できず DUMMY_KEY_FOR_TESTING となっている
+    let topic_name = req_body.topic_name.clone().unwrap_or_default();
     let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok() 
-        || req_body.topic_name.to_lowercase().starts_with("test")
-        || req_body.topic_name.to_lowercase().starts_with("dummy")
+        || topic_name.to_lowercase().starts_with("test")
+        || topic_name.to_lowercase().starts_with("dummy")
         || api_key == "DUMMY_KEY_FOR_TESTING";
 
+    let action = req_body.action.unwrap_or_else(|| "generate".to_string());
+
     if is_dummy_mode {
-        let dummy_res = GeneratedResult {
-            text: format!("(Dummy Mode) This is a generated test article about '{}'. It does not consume any API tokens. You can use this to safely test UI layouts and application flows without hitting rate limits.", req_body.topic_name),
-            source_url: Some("https://example.com/dummy-news-source".into()),
+        let dummy_res = if action == "analyze" {
+            json!({
+                "segments": [
+                    { "id": 1, "text": "This is a dummy", "translation": "これはダミーです", "grammar_note": "主語(S)と動詞(V)" },
+                    { "id": 2, "text": "analysis result", "translation": "解析結果です", "grammar_note": "名詞句" }
+                ],
+                "keywords": [
+                    { "word": "dummy", "meaning": "ダミーの", "part_of_speech": "noun", "example": "This is a dummy text." }
+                ]
+            })
+        } else {
+            json!({
+                "text": format!("(Dummy Mode) This is a generated test article about '{}'. It does not consume any API tokens.", topic_name),
+                "source_url": "https://example.com/dummy-news-source"
+            })
         };
+        
         return Ok(Response::builder()
             .status(200)
             .header("content-type", "application/json")
             .body(Body::Text(serde_json::to_string(&dummy_res).unwrap()))
             .expect("failed to render response"));
     }
-
-    // プロンプトの作成：文字数に幅を持たせ、厳密にJSONを返すように指示
-    let prompt = format!(
-        "You are an English teacher. Write a short English article (between 150 to 250 words) about '{}' suitable for B1 level english learners. 
+    
+    // アクションに応じたプロンプトの作成
+    let prompt = if action == "analyze" {
+        let text_to_analyze = req_body.text.unwrap_or_default();
+        format!(
+            "You are an English teacher. Break down the following english text into segments (chunks of meaning), translate each segment into Japanese, provide a short grammar note for each, and extract 3 to 5 important keywords from the text suitable for B1 level english learners. Do NOT include literal slash characters ('/') in the text.
+Text to analyze: \"{}\"
+You MUST output strictly in valid JSON format matching this schema exactly:
+{{
+  \"segments\": [
+    {{ \"id\": 1, \"text\": \"The quick brown fox\", \"translation\": \"素早い茶色のキツネが\", \"grammar_note\": \"主語(S)\" }},
+    {{ \"id\": 2, \"text\": \"jumps over\", \"translation\": \"〜を飛び越える\", \"grammar_note\": \"動詞(V) + 前置詞(prep)\" }},
+    {{ \"id\": 3, \"text\": \"the lazy dog.\", \"translation\": \"怠け者の犬を。\", \"grammar_note\": \"目的語(O)\" }}
+  ],
+  \"keywords\": [
+    {{ \"word\": \"lazy\", \"meaning\": \"怠惰な\", \"part_of_speech\": \"adjective\", \"example\": \"He is a lazy dog.\" }}
+  ]
+}}",
+            text_to_analyze
+        )
+    } else {
+        format!(
+            "You are an English teacher. Write a short English article (between 150 to 250 words) about '{}' suitable for B1 level english learners. 
 Use the latest news via your Google Search tool if possible. 
 You MUST output strictly in valid JSON format matching this schema exactly:
 {{
   \"text\": \"The generated english article...\",
   \"source_url\": \"The URL of the news source you referenced, or null if not applicable\"
 }}",
-        req_body.topic_name
-    );
+            topic_name
+        )
+    };
 
-    let is_lite = req_body.use_lite_model.unwrap_or(true);
+    let mut is_lite = req_body.use_lite_model.unwrap_or(true);
+    
+    // analyzeの場合は強制的にLiteモデルを使う（検索不要・コスト削減のため）
+    if action == "analyze" {
+        is_lite = true;
+    }
 
     let model_name = if is_lite {
         "gemini-3.5-flash-lite"
@@ -159,12 +194,9 @@ You MUST output strictly in valid JSON format matching this schema exactly:
                     .map(|p| p.text)
                     .unwrap_or_else(|| "{}".to_string());
 
-                // AIの返答（JSON文字列）をRustのGeneratedResult構造体にパースする
-                let out: GeneratedResult = serde_json::from_str(&generated_json_text).unwrap_or_else(|_| {
-                    GeneratedResult {
-                        text: "Failed to parse AI response".into(),
-                        source_url: None,
-                    }
+                // AIの返答（JSON文字列）を任意のJSON Valueにパースする
+                let out: serde_json::Value = serde_json::from_str(&generated_json_text).unwrap_or_else(|_| {
+                    json!({ "error": "Failed to parse AI response" })
                 });
 
                 Ok(Response::builder()
