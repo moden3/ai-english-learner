@@ -45,10 +45,10 @@ resource "aws_apigatewayv2_integration" "vocabulary" {
 
 # ========== Routes (エンドポイントとIntegrationのマッピング) ==========
 
-# /texts/generate
+# /generate_text
 resource "aws_apigatewayv2_route" "post_generate_text" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /texts/generate"
+  route_key = "POST /generate_text"
   target    = "integrations/${aws_apigatewayv2_integration.generate_text.id}"
 }
 

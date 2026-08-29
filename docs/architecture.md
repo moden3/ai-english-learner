@@ -39,14 +39,15 @@ graph TD
 ## 3. ディレクトリ・モジュール構成方針
 
 ```
-aws-work/
-├── eng-app-backend/     # サーバー側リポジトリ
-│   ├── docs/            # バックエンド設計書 (API, DBなど)
+ai-english-learner/      # プロジェクトルート
+├── backend/             # サーバー側リポジトリ
 │   ├── infra/           # Terraformコード
 │   └── src/             # Rustコード (binごとに各Lambda関数を定義)
-├── eng-app-frontend/    # クライアント側リポジトリ
+├── docs/                # ドキュメントディレクトリ
+│   ├── architecture.md  # 本ドキュメント
+│   ├── requirements.md  # 要件定義
+│   └── CONTRIBUTING.md  # 開発手順書
+├── frontend/            # クライアント側リポジトリ
 │   └── src/             # Vite + React のソースコード
-├── requirements.md      # 要件定義
-├── architecture.md      # 本ドキュメント
-└── HANDOFF.md           # 引き継ぎ資料
+└── README.md            # プロジェクト概要
 ```

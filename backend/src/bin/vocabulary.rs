@@ -8,20 +8,14 @@ use uuid::Uuid;
 #[derive(Deserialize, Serialize, Debug)]
 struct VocabularyRequest {
     word: String,
-    meaning: String,
-    part_of_speech: String,
-    example: String,
-    source_text_id: Option<String>,
+    translation: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Vocabulary {
     id: String,
     word: String,
-    meaning: String,
-    part_of_speech: String,
-    example: String,
-    source_text_id: Option<String>,
+    translation: String,
     created_at: String,
 }
 
@@ -50,36 +44,20 @@ async fn function_handler(
                             if let (
                                 Some(AttributeValue::S(sk)),
                                 Some(AttributeValue::S(word)),
-                                Some(AttributeValue::S(meaning)),
-                                Some(AttributeValue::S(part_of_speech)),
-                                Some(AttributeValue::S(example)),
+                                Some(AttributeValue::S(translation)),
                                 Some(AttributeValue::S(created_at)),
                             ) = (
                                 item.get("SK"),
                                 item.get("word"),
-                                item.get("meaning"),
-                                item.get("part_of_speech"),
-                                item.get("example"),
+                                item.get("translation"),
                                 item.get("created_at"),
                             ) {
                                 let id = sk.replace("WORD#", "");
 
-                                // source_text_id は Optional として扱う
-                                let source_text_id = item.get("source_text_id").and_then(|v| {
-                                    if let AttributeValue::S(s) = v {
-                                        Some(s.clone())
-                                    } else {
-                                        None
-                                    }
-                                });
-
                                 vocabularies.push(Vocabulary {
                                     id,
                                     word: word.clone(),
-                                    meaning: meaning.clone(),
-                                    part_of_speech: part_of_speech.clone(),
-                                    example: example.clone(),
-                                    source_text_id,
+                                    translation: translation.clone(),
                                     created_at: created_at.clone(),
                                 });
                             }
@@ -107,23 +85,14 @@ async fn function_handler(
                 let id = Uuid::new_v4().to_string();
                 let created_at = Utc::now().to_rfc3339();
 
-                let mut put_req = client
+                let put_req = client
                     .put_item()
                     .table_name(table_name)
                     .item("PK", AttributeValue::S("VOCAB".into()))
                     .item("SK", AttributeValue::S(format!("WORD#{}", id)))
                     .item("word", AttributeValue::S(vocab_req.word.clone()))
-                    .item("meaning", AttributeValue::S(vocab_req.meaning.clone()))
-                    .item(
-                        "part_of_speech",
-                        AttributeValue::S(vocab_req.part_of_speech.clone()),
-                    )
-                    .item("example", AttributeValue::S(vocab_req.example.clone()))
+                    .item("translation", AttributeValue::S(vocab_req.translation.clone()))
                     .item("created_at", AttributeValue::S(created_at.clone()));
-
-                if let Some(src_id) = &vocab_req.source_text_id {
-                    put_req = put_req.item("source_text_id", AttributeValue::S(src_id.clone()));
-                }
 
                 let res = put_req.send().await;
 
@@ -132,10 +101,7 @@ async fn function_handler(
                         let new_vocab = Vocabulary {
                             id,
                             word: vocab_req.word,
-                            meaning: vocab_req.meaning,
-                            part_of_speech: vocab_req.part_of_speech,
-                            example: vocab_req.example,
-                            source_text_id: vocab_req.source_text_id,
+                            translation: vocab_req.translation,
                             created_at,
                         };
                         let body = serde_json::to_string(&new_vocab).unwrap();
@@ -161,7 +127,17 @@ async fn function_handler(
         },
         lambda_http::http::Method::DELETE => {
             let path_params = event.path_parameters();
-            let id = path_params.first("id");
+            let mut id = path_params.first("id").map(|s| s.to_string());
+
+            // ローカル環境 (cargo lambda watch) では path_parameters が自動解析されないためのフォールバック
+            if id.is_none() {
+                let path = event.uri().path();
+                if let Some(last_seg) = path.split('/').last() {
+                    if !last_seg.is_empty() && last_seg != "vocabulary" {
+                        id = Some(last_seg.to_string());
+                    }
+                }
+            }
 
             match id {
                 Some(vocab_id) => {
@@ -250,10 +226,7 @@ mod tests {
     async fn test_post_vocabulary_fails_without_real_db() {
         let payload = r#"{
             "word": "lazy",
-            "meaning": "怠惰な",
-            "part_of_speech": "adjective",
-            "example": "He is a lazy dog.",
-            "source_text_id": "text-uuid-1234"
+            "translation": "怠惰な"
         }"#;
 
         let request = HttpRequest::builder()

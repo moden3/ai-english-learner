@@ -8,14 +8,12 @@ use uuid::Uuid;
 #[derive(Deserialize, Serialize, Debug)]
 struct TopicRequest {
     name: String,
-    name_en: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Topic {
     id: String,
     name: String,
-    name_en: String,
     created_at: String,
 }
 
@@ -45,19 +43,16 @@ async fn function_handler(
                             if let (
                                 Some(AttributeValue::S(sk)),
                                 Some(AttributeValue::S(name)),
-                                Some(AttributeValue::S(name_en)),
                                 Some(AttributeValue::S(created_at)),
                             ) = (
                                 item.get("SK"),
                                 item.get("name"),
-                                item.get("name_en"),
                                 item.get("created_at"),
                             ) {
                                 let id = sk.replace("TOPIC#", "");
                                 topics.push(Topic {
                                     id,
                                     name: name.clone(),
-                                    name_en: name_en.clone(),
                                     created_at: created_at.clone(),
                                 });
                             }
@@ -92,7 +87,6 @@ async fn function_handler(
                         .item("PK", AttributeValue::S("TOPIC".into()))
                         .item("SK", AttributeValue::S(format!("TOPIC#{}", id)))
                         .item("name", AttributeValue::S(topic_req.name.clone()))
-                        .item("name_en", AttributeValue::S(topic_req.name_en.clone()))
                         .item("created_at", AttributeValue::S(created_at.clone()))
                         .send()
                         .await;
@@ -102,7 +96,6 @@ async fn function_handler(
                             let new_topic = Topic {
                                 id,
                                 name: topic_req.name,
-                                name_en: topic_req.name_en,
                                 created_at,
                             };
                             let body = serde_json::to_string(&new_topic).unwrap();
@@ -130,7 +123,17 @@ async fn function_handler(
         lambda_http::http::Method::DELETE => {
             // Path Parameter から "id" を取得する
             let path_params = event.path_parameters();
-            let id = path_params.first("id");
+            let mut id = path_params.first("id").map(|s| s.to_string());
+
+            // ローカル環境 (cargo lambda watch) では path_parameters が自動解析されないためのフォールバック
+            if id.is_none() {
+                let path = event.uri().path();
+                if let Some(last_seg) = path.split('/').last() {
+                    if !last_seg.is_empty() && last_seg != "topics" {
+                        id = Some(last_seg.to_string());
+                    }
+                }
+            }
 
             match id {
                 Some(topic_id) => {

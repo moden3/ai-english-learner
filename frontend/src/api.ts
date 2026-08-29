@@ -77,8 +77,8 @@ export interface GenerateResult {
   source_url?: string;
 }
 
-export const generateText = (topic_name_en: string) => 
-  fetchWithAuth('/texts/generate', { 
+export const generateText = (topic_name: string, use_lite_model: boolean = true) => 
+  fetchWithAuth('/generate_text', { 
     method: 'POST', 
-    body: JSON.stringify({ topic_name_en }) 
+    body: JSON.stringify({ topic_name, use_lite_model }) 
   }) as Promise<GenerateResult>;

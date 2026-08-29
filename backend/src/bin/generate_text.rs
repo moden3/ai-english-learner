@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 #[derive(Deserialize, Debug)]
 struct GenerateRequest {
-    topic_name_en: String,
+    topic_name: String,
+    use_lite_model: Option<bool>,
 }
 
 // クライアントへ返す最終的なレスポンス構造体
@@ -78,6 +79,27 @@ async fn function_handler(
         }
     };
 
+    // ダミーモードの判定
+    // 1. 環境変数 USE_MOCK_AI が設定されている
+    // 2. トピック名が "test" または "dummy" で始まる
+    // 3. SSMからAPIキーが取得できず DUMMY_KEY_FOR_TESTING となっている
+    let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok() 
+        || req_body.topic_name.to_lowercase().starts_with("test")
+        || req_body.topic_name.to_lowercase().starts_with("dummy")
+        || api_key == "DUMMY_KEY_FOR_TESTING";
+
+    if is_dummy_mode {
+        let dummy_res = GeneratedResult {
+            text: format!("(Dummy Mode) This is a generated test article about '{}'. It does not consume any API tokens. You can use this to safely test UI layouts and application flows without hitting rate limits.", req_body.topic_name),
+            source_url: Some("https://example.com/dummy-news-source".into()),
+        };
+        return Ok(Response::builder()
+            .status(200)
+            .header("content-type", "application/json")
+            .body(Body::Text(serde_json::to_string(&dummy_res).unwrap()))
+            .expect("failed to render response"));
+    }
+
     // プロンプトの作成：文字数に幅を持たせ、厳密にJSONを返すように指示
     let prompt = format!(
         "You are an English teacher. Write a short English article (between 150 to 250 words) about '{}' suitable for B1 level english learners. 
@@ -87,28 +109,42 @@ You MUST output strictly in valid JSON format matching this schema exactly:
   \"text\": \"The generated english article...\",
   \"source_url\": \"The URL of the news source you referenced, or null if not applicable\"
 }}",
-        req_body.topic_name_en
+        req_body.topic_name
     );
 
+    let is_lite = req_body.use_lite_model.unwrap_or(true);
+
+    let model_name = if is_lite {
+        "gemini-3.5-flash-lite"
+    } else {
+        "gemini-3.6-flash"
+    };
+
     let gemini_url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
-        api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model_name, api_key
     );
 
     // Gemini APIリクエストの生成
-    // ここで tools に googleSearch を指定し、temperature でランダム性を上げます
-    let request_body = json!({
+    let mut request_body = json!({
         "contents": [{
             "parts": [{"text": prompt}]
-        }],
-        "tools": [{
-            "googleSearch": {}
         }],
         "generationConfig": {
             "temperature": 0.9,
             "responseMimeType": "application/json"
         }
     });
+
+    // Liteモデルではない（標準モデルの）場合のみ、Google Searchツールを有効化
+    if !is_lite {
+        if let Some(obj) = request_body.as_object_mut() {
+            obj.insert(
+                "tools".to_string(),
+                json!([{ "googleSearch": {} }])
+            );
+        }
+    }
 
     let res = http_client.post(&gemini_url).json(&request_body).send().await;
 
@@ -176,7 +212,7 @@ mod tests {
     #[tokio::test]
     async fn test_post_generate_text_fails_with_dummy_key() {
         let payload = r#"{
-            "topic_name_en": "business"
+            "topic_name": "business"
         }"#;
 
         let request = HttpRequest::builder()

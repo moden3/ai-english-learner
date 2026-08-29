@@ -5,6 +5,7 @@ import type { Topic, GenerateResult } from '../api';
 export default function TextGenerator() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
+  const [useLiteModel, setUseLiteModel] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
 
@@ -23,7 +24,7 @@ export default function TextGenerator() {
     setIsGenerating(true);
     setResult(null);
     try {
-      const res = await generateText(selectedTopic);
+      const res = await generateText(selectedTopic, useLiteModel);
       setResult(res);
     } catch (err) {
       console.error(err);
@@ -59,6 +60,19 @@ export default function TextGenerator() {
         >
           {isGenerating ? 'Generating...' : '✨ Generate Now'}
         </button>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
+        <input 
+          type="checkbox" 
+          id="useLiteModel" 
+          checked={useLiteModel} 
+          onChange={e => setUseLiteModel(e.target.checked)}
+          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+        />
+        <label htmlFor="useLiteModel" style={{ cursor: 'pointer' }}>
+          Use Fast/Lite AI (No Search, 500 requests/day)
+        </label>
       </div>
 
       {isGenerating && (
