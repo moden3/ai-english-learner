@@ -39,7 +39,14 @@ async fn function_handler(
     event: Request,
     ssm_client: Arc<SsmClient>,
     http_client: Arc<HttpClient>,
+    api_key: &str,
 ) -> Result<Response<Body>, Error> {
+    if !eng_app_backend::validate_api_key(&event, api_key) {
+        return Ok(Response::builder()
+            .status(401)
+            .body(Body::Text("Unauthorized".into()))
+            .expect("failed to render response"));
+    }
     if *event.method() != lambda_http::http::Method::POST {
         return Ok(Response::builder()
             .status(405)
@@ -238,10 +245,14 @@ async fn main() -> Result<(), Error> {
     let ssm_client = Arc::new(SsmClient::new(&config));
     let http_client = Arc::new(HttpClient::new());
 
+    let app_api_key = eng_app_backend::get_api_key(&ssm_client).await;
+    let app_api_key = Arc::new(app_api_key);
+
     run(service_fn(move |event| {
         let ssm_client = ssm_client.clone();
         let http_client = http_client.clone();
-        async move { function_handler(event, ssm_client, http_client).await }
+        let app_api_key = app_api_key.clone();
+        async move { function_handler(event, ssm_client, http_client, &app_api_key).await }
     })).await
 }
 
@@ -267,7 +278,7 @@ mod tests {
         let ssm_client = Arc::new(SsmClient::new(&config));
         let http_client = Arc::new(HttpClient::new());
 
-        let response = function_handler(request, ssm_client, http_client).await.expect("handler failed");
+        let response = function_handler(request, ssm_client, http_client, "").await.expect("handler failed");
 
         assert_eq!(response.status(), 500, "ダミーキーでの通信になるため500エラーになるはずです");
     }

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
 # mise description="Run frontend dev server"
+
+# 起動前にポート5173（Vite）を使用中のプロセスを強制終了する
+lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+
 cd frontend
 npm run dev

@@ -56,6 +56,20 @@ export const fetchTopics = () => fetchWithAuth('/topics') as Promise<Topic[]>;
 export const addTopic = (name: string) => fetchWithAuth('/topics', { method: 'POST', body: JSON.stringify({ name }) });
 export const deleteTopic = (id: string) => fetchWithAuth(`/topics/${id}`, { method: 'DELETE' });
 
+export const validateApiKey = async (key: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_URL}/topics`, {
+      method: 'GET',
+      headers: {
+        'x-api-key': key
+      }
+    });
+    return response.ok;
+  } catch (err) {
+    return false;
+  }
+};
+
 // ==========================================
 // Vocabulary API
 // ==========================================

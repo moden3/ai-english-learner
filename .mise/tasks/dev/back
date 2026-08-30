@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
 # mise description="Run backend local API server"
+
+# 起動前にポート9000（cargo lambda）を使用中のプロセスを強制終了する
+lsof -ti:9000 | xargs kill -9 2>/dev/null || true
+
 cd backend
 cargo lambda watch --env-file .env

@@ -24,7 +24,15 @@ async fn function_handler(
     event: Request,
     client: Arc<Client>,
     table_name: &str,
+    api_key: &str,
 ) -> Result<Response<Body>, Error> {
+    if !eng_app_backend::validate_api_key(&event, api_key) {
+        return Ok(Response::builder()
+            .status(401)
+            .body(Body::Text("Unauthorized".into()))
+            .expect("failed to render response"));
+    }
+
     match *event.method() {
         lambda_http::http::Method::GET => {
             // DynamoDBから PK="VOCAB" のデータを検索 (Query)
@@ -181,12 +189,17 @@ async fn main() -> Result<(), Error> {
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let client = Arc::new(Client::new(&config));
 
+    let ssm_client = aws_sdk_ssm::Client::new(&config);
+    let api_key = eng_app_backend::get_api_key(&ssm_client).await;
+    let api_key = Arc::new(api_key);
+
     let table_name = "eng-app-table".to_string();
 
     run(service_fn(move |event| {
         let client = client.clone();
         let table_name = table_name.clone();
-        async move { function_handler(event, client, &table_name).await }
+        let api_key = api_key.clone();
+        async move { function_handler(event, client, &table_name, &api_key).await }
     }))
     .await
 }
@@ -211,7 +224,7 @@ mod tests {
             .expect("failed to build request");
 
         let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table")
+        let response = function_handler(request, client, "dummy_table", "")
             .await
             .expect("handler failed");
 
@@ -237,7 +250,7 @@ mod tests {
             .expect("failed to build request");
 
         let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table")
+        let response = function_handler(request, client, "dummy_table", "")
             .await
             .expect("handler failed");
 
