@@ -1,51 +1,54 @@
-# 6. サーバーレス＆AIアプリのローカル開発手法 (Local Dev Strategy)
+# 6. サーバーレス＆AIアプリのローカル開発手法
 
-クラウドインフラや外部のAI APIに依存するアプリケーションを開発する際、「テストのたびにクラウドへデプロイが必要になる」「テストのたびにAI APIの課金枠（制限枠）を消費してしまう」という2つの大きな課題が発生する。
+クラウドやAIに依存するアプリ開発における「デプロイの手間」「API課金・制限」を解決し、**クラウド課金ゼロ・API制限ゼロ**でフロントエンドを高速開発するための仕組み。
 
-本プロジェクトでは、この課題を解決し、**「クラウド課金ゼロ」「API制限ゼロ」でフロントエンドの高速な反復開発（イテレーション）を実現する仕組み** を取り入れている。
+## 環境構成の比較（本番 vs ローカル）
 
-## 1. `cargo lambda watch` によるローカルサーバーレス環境
-AWS Lambda (Rust) のコードをテストするたびにAWSへZIPデプロイするのは非効率である。
-本プロジェクトでは `cargo lambda watch` を利用し、ローカルマシン上に擬似的なLambda環境を立ち上げることで、API Gateway + Lambda の挙動を完全にローカルでシミュレートしている。
+```mermaid
+graph TD
+    subgraph Prod ["本番環境 (Production)"]
+        FE_Prod["Vite/React<br>S3+CloudFront"] -->|"HTTPS"| APIGW["API Gateway"]
+        APIGW --> Lambda["Lambda (Rust)"]
+        Lambda -->|"API Call"| Gemini["Google Gemini API"]
+    end
+
+    subgraph Local ["ローカル開発環境 (Local)"]
+        FE_Local["Vite/React<br>localhost:5173"] -->|"HTTP"| Watch["cargo lambda watch<br>localhost:9000"]
+        Watch -.-> Mock["ダミーJSON応答<br>AIモックモード"]
+        
+        style Watch stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+        style Mock fill:#e3f2fd,stroke:#1e88e5
+    end
+```
+
+## 1. `cargo lambda watch` によるバックエンドのモック起動
+毎回AWSにZIPデプロイする手間を省き、ローカルマシン上に擬似的なLambda環境（ポート9000）を立ち上げる。
 
 ```bash
-# .envファイルを読み込ませつつ、ローカルでポート9000番にLambda環境を立ち上げる
 $ cargo lambda watch --env-file .env
 ```
-これにより、フロントエンドからは `http://localhost:9000/lambda-url/generate_text` へリクエストを送るだけで、本番と同じようにバックエンドの処理をテストできる。
+- フロントエンドの通信先を `http://localhost:9000/...` に変更するだけで、本番同等のテストが可能。
 
-## 2. `.env` を活用した AI ダミーモード（モック）の仕組み
-Gemini API のような外部APIを組み込む際、UIの微調整やアニメーションのテストのたびに本物のAIを呼び出していると、あっという間に「1日の利用上限（レートリミット）」に引っかかってしまう。
+## 2. AIダミーモード（モック）の仕組み
+UI微調整のたびに本物のGemini APIを叩くと利用上限（レートリミット）に到達してしまうため、バックエンド側で通信をバイパスする仕組み。
 
-これを防ぐため、バックエンド側に「ダミーモード（モック）」を実装している。
-
-### 実装のポイント
-バックエンド (`generate_text.rs`) では、以下のいずれかの条件を満たす場合に、Gemini APIへの通信をバイパスし、即座に「固定のJSONデータ」を返すように分岐処理を入れている。
-
-1. **環境変数による制御**: バックエンド側の `.env` ファイルに `USE_MOCK_AI=true` が設定されている場合。
-2. **マジックワードによる制御**: ユーザーが入力したトピック名が `test` や `dummy` で始まる場合。
-3. **APIキーのフォールバック**: AWS SSMからAPIキーが取得できず、初期値（`DUMMY_KEY_FOR_TESTING`）のままの場合。
+### ダミーモードの発動条件
+以下のいずれかを満たした場合、AI通信をスキップして**固定のダミーJSON**を即座に返す。
+1. **環境変数**: `.env` に `USE_MOCK_AI=true` がある。
+2. **マジックワード**: 入力トピック名が `test` や `dummy` で始まる。
+3. **APIキー未設定**: AWS SSMのキーが初期値（`DUMMY_KEY_FOR_TESTING`）のまま。
 
 ```rust
-// generate_text.rs のダミー判定ロジック
+// ダミー判定ロジック (Rust)
 let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok() 
     || topic_name.to_lowercase().starts_with("test")
     || topic_name.to_lowercase().starts_with("dummy")
     || api_key == "DUMMY_KEY_FOR_TESTING";
 
 if is_dummy_mode {
-    // 外部APIを叩かずに即座にダミーのJSONを返す
-    let dummy_res = if action == "analyze" {
-        json!({
-            "segments": [...],
-            "keywords": [...]
-        })
-    } else { ... };
-    
-    return Ok(Response::builder().body(...));
+    // 外部APIを叩かず、数ミリ秒で固定データ(Mock JSON)を返す
+    return Ok(Response::builder().body(mock_json));
 }
 ```
 
-### 開発体験 (DX) への寄与
-この仕組みにより、フロントエンドエンジニアは「APIの制限」や「AIの応答待ち時間」を気にすることなく、UIのスタイル調整や状態遷移のテストを**ローカルで瞬時**に行うことができるようになる。
-サーバーレス＆AIアプリをストレスなく個人開発するための非常に重要なアプローチである。
+- **DX (開発体験) の向上**: APIの制限枠や「数秒のAI応答待ち」を気にすることなく、ローカルで**瞬時に**UI・状態遷移のテストを反復できる。

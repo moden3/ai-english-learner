@@ -8,13 +8,36 @@
    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=<API_KEY>`
 
 ## バックエンド(Rust)からの組み込み方法
-AWS Lambda (Rust) からGemini APIを呼び出す具体的な実装手順。
+AWS Lambda (Rust) からGemini APIを呼び出す具体的な実装手順（HTTPクライアントには `reqwest` クレートを使用）。
 
-- **HTTPクライアント**: `reqwest` クレートを使用して非同期HTTPリクエストを行う。
-- **ハイブリッド方式（2ステップ処理）**:
-  コストと精度のバランスを取るため、2つのアクションを使い分ける。
-  1. `action: "generate"` (標準モデル + Google Search): 質の高い最新の英語記事を生成。
-  2. `action: "analyze"` (Liteモデル): 生成された記事を構文解析し、スラッシュリーディングとキーワードを抽出。
+### ハイブリッド方式（2ステップ処理）
+コストと精度のバランスを最適化するため、APIへのリクエストを2つのアクションに分割し、用途に応じてモデルを使い分けている。
+
+| アクション | 使用モデル | Google Search | 目的・用途 |
+| :--- | :--- | :---: | :--- |
+| `generate` | **標準モデル** (`1.5-flash`) | **ON** | 高品質な最新情報の取得と、長文の英語記事生成 |
+| `analyze`  | **Liteモデル** (`1.5-flash-lite`) | OFF | 生成済み記事の構文解析、キーワード抽出（単純なテキスト処理） |
+
+### データ処理フロー
+```mermaid
+sequenceDiagram
+    participant FE as フロントエンド
+    participant API as API Gateway
+    participant Rust as Lambda (Rust)
+    participant Gemini as Gemini API
+
+    FE->>API: 1. generate リクエスト
+    API->>Rust: Invoke
+    Rust->>Gemini: 標準モデル + 検索ON で呼び出し
+    Gemini-->>Rust: 英語記事
+    Rust-->>FE: 記事データを返却
+
+    FE->>API: 2. analyze リクエスト (記事データを送信)
+    API->>Rust: Invoke
+    Rust->>Gemini: Liteモデル + 検索OFF で呼び出し
+    Gemini-->>Rust: 構文解析結果
+    Rust-->>FE: 構文と単語データを返却
+```
 
 - **実装イメージ**:
   ```rust

@@ -62,12 +62,27 @@ resource "aws_lambda_permission" "api_gw_permission" {
 
 ---
 
-## トピック2: フロントエンドのセキュアな配信
+## トピック2: フロントエンドのセキュアな配信 (S3 + CloudFront)
 
-- **構成**: Amazon S3 + CloudFront
-- **設計思想**: S3バケットは完全に非公開（パブリックアクセス拒否）とし、CloudFront経由でのみアクセスを許可する。
-- **OAC (Origin Access Control)**: 従来のOAIに代わる、S3へのセキュアなアクセス認証方式。
-- **SPA対策**: Reactのルーティング機能（React Router）を正常に動かすため、CloudFrontで `403/404` エラー時に `index.html` (ステータス200) を返す設定が必須。
+### 配信アーキテクチャ
+```mermaid
+sequenceDiagram
+    participant User as ユーザー (ブラウザ)
+    participant CF as CloudFront
+    participant S3 as S3 (静的ホスティング非公開)
+
+    User->>CF: アクセス (HTTPS)
+    CF->>S3: OACによる認証付きリクエスト
+    S3-->>CF: コンテンツ返却
+    CF-->>User: キャッシュ付き配信
+    
+    note over CF,S3: SPA対策:<br>403/404エラー時は<br>index.html(200)を返す
+```
+
+### 設計のポイント
+- **S3の非公開化**: バケットへの直接アクセスを遮断（パブリックアクセス拒否）。
+- **OAC (Origin Access Control)**: CloudFrontからS3へ安全にアクセスするためのAWSの最新の認証方式（従来のOAIの代替）。S3側でCloudFrontからの通信のみを許可できるようになる。
+- **SPAルーティング対策**: React等のSPAでは、直接URLアクセス時にCloudFrontが403/404エラーとなるため、`index.html` (ステータス200) にフォールバックさせる設定が必須。
 
 ### 実装サンプル
 

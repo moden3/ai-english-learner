@@ -34,3 +34,5 @@ graph TD
 3. [モダンフロントエンド開発とセキュリティ](./03_frontend_react.md)
 4. [AI (Gemini) 連携のベストプラクティス](./04_ai_integration.md)
 5. [サーバーレスのコスト最適化戦略](./05_cost_optimization.md)
+6. [サーバーレス＆AIアプリのローカル開発手法](./06_local_dev_strategy.md)
+7. [アーキテクチャ・デシジョン・レコード (ADR)](./07_architecture_decisions.md)
