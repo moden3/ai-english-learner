@@ -1,4 +1,4 @@
-# 1. TerraformとAWSインフラ基盤
+# 2. TerraformとAWSインフラ基盤
 
 AWSリソースをTerraformでコード化（IaC）し、安全かつ自動でデプロイするためのノウハウと実装例。
 
@@ -152,3 +152,76 @@ resource "aws_s3_bucket_policy" "frontend_policy" {
   })
 }
 ```
+
+---
+
+## トピック3: カスタムランタイム(Rust)のデプロイ
+
+Rustバイナリを動かすため、OSのみを提供するカスタムランタイム (`provided.al2023`) を使用してデプロイします。
+
+### 実装サンプル
+
+```hcl
+resource "aws_lambda_function" "api_lambda" {
+  function_name = "my-rust-lambda"
+  # cargo lambda等でコンパイル・圧縮したZIPファイルを指定
+  filename      = "function.zip"
+  # カスタムランタイムの場合は handler の値は任意だが、通常は bootstrap などを指定
+  handler       = "bootstrap"
+  # OSのみを提供するカスタムランタイムを指定
+  runtime       = "provided.al2023"
+  role          = aws_iam_role.lambda_role.arn
+}
+```
+
+---
+
+## トピック4: DynamoDBのシングルテーブル設計
+
+RDBのようにテーブルを分割せず、1つのテーブル（`eng-app-table`）で複数種類のデータ（トピック、単語など）を扱うための設計例です。
+
+### 実装サンプル
+
+```hcl
+resource "aws_dynamodb_table" "main" {
+  name         = "eng-app-table"
+  billing_mode = "PAY_PER_REQUEST" # 使った分だけ課金（無料枠に最適）
+  
+  hash_key  = "PK"
+  range_key = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S" # String
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+}
+```
+
+---
+
+## トピック5: シークレット管理と `ignore_changes` (SSM Parameter Store)
+
+AWS側のAPIキーやGemini APIキーはコードに直書きせず、SSM Parameter Storeに保存します。
+
+### 実装サンプル
+
+```hcl
+resource "aws_ssm_parameter" "api_key" {
+  name  = "/eng-app/api-key"
+  type  = "SecureString" # 暗号化して保存
+  value = "dummy-value-please-change-in-console"
+
+  # 【重要】Terraformの更新対象から除外する工夫
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+```
+
+- **`ignore_changes = [value]` の効果**:
+  初期構築時はダミー値でリソースを作成するが、その後AWSコンソール上で手動で「本物のAPIキー」に変更する。この設定を入れることで、次回 `terraform apply` を実行した際にも **TerraformがAWS上の本物のキーをダミー値で上書き（破壊）してしまうのを防ぐ** ことができる。セキュリティとIaCを両立させる必須のテクニック。

@@ -1,4 +1,4 @@
-# 3. モダンフロントエンド開発とセキュリティ
+# 4. モダンフロントエンド開発とセキュリティ
 
 ## Vite + Reactの実装手法
 - **Viteの採用**: 従来のWebpackに比べ、高速なHMRと最適化されたビルドを提供するモダンなビルドツール。
@@ -132,19 +132,4 @@ useEffect(() => {
 ### バックエンド側の工夫 (AWS SSM Parameter Store)
 AWS側のAPIキーやGemini APIキーは、コードに直書きせず **SSM Parameter Store** に保存し、Lambdaが実行時に読み込む。
 
-```hcl
-# SSMパラメータの作成 (Terraform)
-resource "aws_ssm_parameter" "api_key" {
-  name  = "/eng-app/api-key"
-  type  = "SecureString" # 暗号化して保存
-  value = "dummy-value-please-change-in-console"
-
-  # 【重要】Terraformの更新対象から除外する工夫
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-```
-
-- **`ignore_changes = [value]` の効果**:
-  初期構築時はダミー値でリソースを作成するが、その後AWSコンソール上で手動で「本物のAPIキー」に変更する。この設定を入れることで、次回 `terraform apply` を実行した際にも **TerraformがAWS上の本物のキーをダミー値で上書き（破壊）してしまうのを防ぐ** ことができる。セキュリティとIaCを両立させる必須のテクニック。
+（※初期構築時ダミー値を使用し、コンソールで本物に差し替えるIaCとセキュリティを両立させるTerraformの実装例については `01_terraform_infrastructure.md` のトピック5を参照）

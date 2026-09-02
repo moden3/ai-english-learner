@@ -1,4 +1,4 @@
-# 4. AI (Gemini API) 連携の組み込み方
+# 5. AI (Gemini API) 連携とコスト最適化
 
 本プロジェクトでは、Googleの `Gemini API (gemini-1.5-flash)` を用いて英語学習コンテンツ（英文生成・和訳・構文解説など）の生成を行っている。
 
