@@ -159,7 +159,7 @@ You MUST output strictly in valid JSON format matching this schema exactly:
     let model_name = if is_lite {
         "gemini-3.5-flash-lite"
     } else {
-        "gemini-3.6-flash"
+        "gemini-flash-latest"
     };
 
     let gemini_url = format!(
