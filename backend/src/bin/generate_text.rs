@@ -85,7 +85,7 @@ async fn function_handler(
     // 2. トピック名が "test" または "dummy" で始まる
     // 3. SSMからAPIキーが取得できず DUMMY_KEY_FOR_TESTING となっている
     let topic_name = req_body.topic_name.clone().unwrap_or_default();
-    let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok() 
+    let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok()
         || topic_name.to_lowercase().starts_with("test")
         || topic_name.to_lowercase().starts_with("dummy")
         || api_key == "DUMMY_KEY_FOR_TESTING";
@@ -109,19 +109,19 @@ async fn function_handler(
                 "source_url": "https://example.com/dummy-news-source"
             })
         };
-        
+
         return Ok(Response::builder()
             .status(200)
             .header("content-type", "application/json")
             .body(Body::Text(serde_json::to_string(&dummy_res).unwrap()))
             .expect("failed to render response"));
     }
-    
+
     // アクションに応じたプロンプトの作成
     let prompt = if action == "analyze" {
         let text_to_analyze = req_body.text.unwrap_or_default();
         format!(
-            "You are an English teacher. Break down the following english text into segments (chunks of meaning), translate each segment into Japanese, provide a short grammar note for each, and extract 3 to 5 important keywords from the text suitable for B1 level english learners. Do NOT include literal slash characters ('/') in the text.
+            "You are an English teacher. Break down the following english text into segments (chunks of meaning), translate each segment into Japanese, and provide a short grammar note for each. Also, extract highly advanced business keywords or idioms (CEFR C1 level) from the text. Skip basic and intermediate words (A1-B2) as the user already knows them (TOEIC 800+). Extract a maximum of 10 words. Do NOT include literal slash characters ('/') in the text.
 Text to analyze: \"{}\"
 You MUST output strictly in valid JSON format matching this schema exactly:
 {{
@@ -138,7 +138,7 @@ You MUST output strictly in valid JSON format matching this schema exactly:
         )
     } else {
         format!(
-            "You are an English teacher. Write a short English article (between 150 to 250 words) about '{}' suitable for B1 level english learners. 
+            "You are an English teacher. Write a short, highly professional business English article (between 150 to 250 words) about '{}' suitable for upper-intermediate to advanced business English learners (TOEIC 800+, CEFR B2-C1). Incorporate practical and advanced business vocabulary. 
 Use the latest news via your Google Search tool if possible. 
 You MUST output strictly in valid JSON format matching this schema exactly:
 {{
@@ -150,7 +150,7 @@ You MUST output strictly in valid JSON format matching this schema exactly:
     };
 
     let mut is_lite = req_body.use_lite_model.unwrap_or(true);
-    
+
     // analyzeの場合は強制的にLiteモデルを使う（検索不要・コスト削減のため）
     if action == "analyze" {
         is_lite = true;
@@ -168,34 +168,46 @@ You MUST output strictly in valid JSON format matching this schema exactly:
     );
 
     // Gemini APIリクエストの生成
+    // 注: Google Search ツールと responseMimeType: "application/json" はGemini APIの仕様上併用不可（400エラーとなる）のため、
+    // !is_lite（検索ツール利用時）は responseMimeType を含めない
+    let generation_config = if is_lite {
+        json!({
+            "temperature": 0.9,
+            "responseMimeType": "application/json"
+        })
+    } else {
+        json!({
+            "temperature": 0.9
+        })
+    };
+
     let mut request_body = json!({
         "contents": [{
             "parts": [{"text": prompt}]
         }],
-        "generationConfig": {
-            "temperature": 0.9,
-            "responseMimeType": "application/json"
-        }
+        "generationConfig": generation_config
     });
 
     // Liteモデルではない（標準モデルの）場合のみ、Google Searchツールを有効化
     if !is_lite {
         if let Some(obj) = request_body.as_object_mut() {
-            obj.insert(
-                "tools".to_string(),
-                json!([{ "googleSearch": {} }])
-            );
+            obj.insert("tools".to_string(), json!([{ "googleSearch": {} }]));
         }
     }
 
-    let res = http_client.post(&gemini_url).json(&request_body).send().await;
+    let res = http_client
+        .post(&gemini_url)
+        .json(&request_body)
+        .send()
+        .await;
 
     match res {
         Ok(resp) => {
             if resp.status().is_success() {
                 let gemini_resp: GeminiResponse = resp.json().await?;
                 // AIが返してきた文字列（JSONとして指示したので中身はJSON文字列のはず）
-                let mut generated_json_text = gemini_resp.candidates
+                let mut generated_json_text = gemini_resp
+                    .candidates
                     .and_then(|c| c.into_iter().next())
                     .and_then(|c| c.content.parts.into_iter().next())
                     .map(|p| p.text)
@@ -211,9 +223,8 @@ You MUST output strictly in valid JSON format matching this schema exactly:
                 }
 
                 // AIの返答（JSON文字列）を任意のJSON Valueにパースする
-                let out: serde_json::Value = serde_json::from_str(&generated_json_text).unwrap_or_else(|_| {
-                    json!({ "error": "Failed to parse AI response" })
-                });
+                let out: serde_json::Value = serde_json::from_str(&generated_json_text)
+                    .unwrap_or_else(|_| json!({ "error": "Failed to parse AI response" }));
 
                 Ok(Response::builder()
                     .status(200)
@@ -253,7 +264,8 @@ async fn main() -> Result<(), Error> {
         let http_client = http_client.clone();
         let app_api_key = app_api_key.clone();
         async move { function_handler(event, ssm_client, http_client, &app_api_key).await }
-    })).await
+    }))
+    .await
 }
 
 #[cfg(test)]
@@ -278,8 +290,14 @@ mod tests {
         let ssm_client = Arc::new(SsmClient::new(&config));
         let http_client = Arc::new(HttpClient::new());
 
-        let response = function_handler(request, ssm_client, http_client, "").await.expect("handler failed");
+        let response = function_handler(request, ssm_client, http_client, "")
+            .await
+            .expect("handler failed");
 
-        assert_eq!(response.status(), 500, "ダミーキーでの通信になるため500エラーになるはずです");
+        assert_eq!(
+            response.status(),
+            500,
+            "ダミーキーでの通信になるため500エラーになるはずです"
+        );
     }
 }
