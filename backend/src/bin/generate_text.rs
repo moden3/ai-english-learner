@@ -139,7 +139,7 @@ You MUST output strictly in valid JSON format matching this schema exactly:
     } else {
         format!(
             "You are an English teacher. Write a short, highly professional business English article (between 150 to 250 words) about '{}' suitable for upper-intermediate to advanced business English learners (TOEIC 800+, CEFR B2-C1). Incorporate practical and advanced business vocabulary. 
-Use the latest news via your Google Search tool if possible. 
+Focus on real-world business contexts, modern industry trends, and practical vocabulary. 
 You MUST output strictly in valid JSON format matching this schema exactly:
 {{
   \"text\": \"The generated english article...\",
@@ -168,32 +168,29 @@ You MUST output strictly in valid JSON format matching this schema exactly:
     );
 
     // Gemini APIリクエストの生成
-    // 注: Google Search ツールと responseMimeType: "application/json" はGemini APIの仕様上併用不可（400エラーとなる）のため、
-    // !is_lite（検索ツール利用時）は responseMimeType を含めない
-    let generation_config = if is_lite {
-        json!({
-            "temperature": 0.9,
-            "responseMimeType": "application/json"
-        })
-    } else {
-        json!({
-            "temperature": 0.9
-        })
-    };
-
+    // 注: Google Search ツール併用時は responseMimeType が仕様競合(400)となるため除外していましたが、
+    // ツール無効化に伴い構造化出力を安定させるため application/json を指定します。
     let mut request_body = json!({
         "contents": [{
             "parts": [{"text": prompt}]
         }],
-        "generationConfig": generation_config
+        "generationConfig": {
+            "temperature": 0.9,
+            "responseMimeType": "application/json"
+        }
     });
 
     // Liteモデルではない（標準モデルの）場合のみ、Google Searchツールを有効化
+    // 【備考】Google Search Groundingは無料枠(Free Tier)ではクォータ制限(429 RESOURCE_EXHAUSTED)となるため、
+    // 証跡として残しつつコメントアウトしています。有料プラン(Pay-as-you-go)で利用する場合は有効化してください。
+    // （※有効化する際は、Geminiの仕様上 responseMimeType と競合するため generationConfig から除外する必要があります）
+    /*
     if !is_lite {
         if let Some(obj) = request_body.as_object_mut() {
             obj.insert("tools".to_string(), json!([{ "googleSearch": {} }]));
         }
     }
+    */
 
     let res = http_client
         .post(&gemini_url)
