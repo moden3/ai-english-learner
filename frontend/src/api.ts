@@ -91,10 +91,10 @@ export interface GenerateResult {
   source_url?: string;
 }
 
-export const generateText = (topic_name: string, use_lite_model: boolean = true) => 
+export const generateText = (topic_name: string, use_web_search: boolean = false) => 
   fetchWithAuth('/generate_text', { 
     method: 'POST', 
-    body: JSON.stringify({ topic_name, use_lite_model, action: 'generate' }) 
+    body: JSON.stringify({ topic_name, use_web_search, action: 'generate' }) 
   }) as Promise<GenerateResult>;
 
 export interface AnalyzeSegment {
@@ -119,5 +119,5 @@ export interface AnalyzeResult {
 export const analyzeText = (text: string) => 
   fetchWithAuth('/generate_text', { 
     method: 'POST', 
-    body: JSON.stringify({ action: 'analyze', text, use_lite_model: true }) 
+    body: JSON.stringify({ action: 'analyze', text }) 
   }) as Promise<AnalyzeResult>;

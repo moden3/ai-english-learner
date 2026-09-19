@@ -23,15 +23,19 @@ const [isAuthenticated, setIsAuthenticated] = useState(false);
 // 3. APIから取得したデータを保持するステート (各コンポーネント)
 const [topics, setTopics] = useState<Topic[]>([]);
 
-// 4. ローディング中かどうかを判定するステート
+// 4. 最新ニュース検索(Tavily)のON/OFFステート (TextGenerator.tsx)
+const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+
+// 5. ローディング中かどうかを判定するステート
 const [loading, setLoading] = useState(false);
 // true の時はスピナー(ぐるぐる)を表示
 ```
 
 ### 非同期処理とUX向上策
-AI（Gemini）を用いたAPI通信はレスポンスに数秒かかる場合がある。そのため、`loading` ステートを活用して以下のようなUX制御を行っている。
+AI（Gemini / Tavily）を用いたAPI通信はレスポンスに数秒かかる場合がある。そのため、`loading` ステートを活用して以下のようなUX制御を行っている。
 - **多重送信の防止**: API通信中は送信ボタンに `disabled={loading}` を設定し、ユーザーによる二重クリックを防ぐ。
 - **視覚的フィードバック**: 通信中であることを示すスピナー（ローディングUI）を表示し、処理が進行中であることを明示する。
+- **Web検索失敗時(503)のハンドリング**: Tavily検索でエラーまたは記事0件だった場合、バックエンドが 503 (`Web search failed...`) を返すため、フロントエンドで明示的にエラーメッセージをキャッチして表示し、再試行またはWeb検索OFFでの生成を促す。
 
 ## UIデザイン (Vanilla CSS + Glassmorphism)
 CSS変数（カスタムプロパティ）やFlexbox/Gridを活用し、素のCSSだけでモダンで保守性の高いデザインを構築。
@@ -64,7 +68,7 @@ stateDiagram-v2
 
     state Dashboard {
         [*] --> TextGenerator
-        TextGenerator : 英文生成画面
+        TextGenerator : 英文生成画面 (Web検索切替対応)
         TopicManager : トピック管理画面
         VocabularyManager : 単語帳画面
         
@@ -130,6 +134,6 @@ useEffect(() => {
 ```
 
 ### バックエンド側の工夫 (AWS SSM Parameter Store)
-AWS側のAPIキーやGemini APIキーは、コードに直書きせず **SSM Parameter Store** に保存し、Lambdaが実行時に読み込む。
+AWS側のAPIキー、Gemini APIキー、Tavily APIキーは、コードに直書きせず **SSM Parameter Store** に保存し、Lambdaが起動時（コールドスタート時）に一括キャッシュ読み込みを行う。
 
-（※初期構築時ダミー値を使用し、コンソールで本物に差し替えるIaCとセキュリティを両立させるTerraformの実装例については `01_terraform_infrastructure.md` のトピック5を参照）
+（※初期構築時ダミー値を使用し、コンソールで本物に差し替えるIaCとセキュリティを両立させるTerraformの実装例については `02_terraform_infrastructure.md` のトピック5を参照）

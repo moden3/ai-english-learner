@@ -21,3 +21,15 @@ resource "aws_ssm_parameter" "gemini_api_key" {
     ignore_changes = [value]
   }
 }
+
+# Tavily AI Search API Key
+resource "aws_ssm_parameter" "tavily_api_key" {
+  name        = "/eng-app/tavily-api-key"
+  description = "API Key for Tavily AI Search (used for news context retrieval)"
+  type        = "SecureString"
+  value       = "CHANGE_ME_TAVILY_KEY"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}

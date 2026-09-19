@@ -206,15 +206,21 @@ resource "aws_dynamodb_table" "main" {
 
 ## トピック5: シークレット管理と `ignore_changes` (SSM Parameter Store)
 
-AWS側のAPIキーやGemini APIキーはコードに直書きせず、SSM Parameter Storeに保存します。
+AWS側のAPIキー、Gemini APIキー、およびTavily Search APIキーはコードに直書きせず、SSM Parameter Storeの `SecureString` に保存します。
+
+### 管理しているパラメータ一覧 (`backend/infra/ssm.tf`)
+1. `/eng-app/api-key`: クライアント（フロントエンド）とバックエンド間の簡易認証キー
+2. `/eng-app/gemini-api-key`: Google Gemini API 呼び出し用キー
+3. `/eng-app/tavily-api-key`: Tavily AI Search API 呼び出し用キー（最新ニュース検索用）
 
 ### 実装サンプル
 
 ```hcl
-resource "aws_ssm_parameter" "api_key" {
-  name  = "/eng-app/api-key"
-  type  = "SecureString" # 暗号化して保存
-  value = "dummy-value-please-change-in-console"
+resource "aws_ssm_parameter" "tavily_api_key" {
+  name        = "/eng-app/tavily-api-key"
+  description = "API Key for Tavily AI Search (used for news context retrieval)"
+  type        = "SecureString" # 暗号化して安全に保存
+  value       = "CHANGE_ME_TAVILY_KEY"
 
   # 【重要】Terraformの更新対象から除外する工夫
   lifecycle {
@@ -224,4 +230,4 @@ resource "aws_ssm_parameter" "api_key" {
 ```
 
 - **`ignore_changes = [value]` の効果**:
-  初期構築時はダミー値でリソースを作成するが、その後AWSコンソール上で手動で「本物のAPIキー」に変更する。この設定を入れることで、次回 `terraform apply` を実行した際にも **TerraformがAWS上の本物のキーをダミー値で上書き（破壊）してしまうのを防ぐ** ことができる。セキュリティとIaCを両立させる必須のテクニック。
+  初期構築時はダミー値（`CHANGE_ME_...`）でリソースを作成するが、その後AWSコンソール等から手動で「本物のAPIキー」に変更する。この設定を入れることで、次回 `terraform apply` を実行した際にも **TerraformがAWS上の本物のキーをダミー値で上書き（破壊）してしまうのを防ぐ** ことができる。セキュリティとIaCを両立させる必須のテクニック。

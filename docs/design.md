@@ -19,8 +19,9 @@ graph TD
     APIGW -->|Invoke| Lambda[AWS Lambda <br>Rustバックエンド]
     
     Lambda -->|Read/Write| DDB[(Amazon DynamoDB <br>トピック・単語帳)]
-    Lambda -->|Read| SSM[SSM Parameter Store <br>シークレット管理]
-    Lambda -->|REST API| Gemini[Google Gemini API <br>テキスト一括生成]
+    Lambda -->|起動時一括読込| SSM[SSM Parameter Store <br>シークレット管理]
+    Lambda -.->|最新ニュース検索| Tavily[Tavily AI Search API <br>Web検索エンジン]
+    Lambda -->|REST API| Gemini[Google Gemini API <br>gemini-3.5-flash-lite]
 ```
 
 ---
@@ -28,7 +29,48 @@ graph TD
 ## 2. システムシーケンス図（データフロー）
 
 AIによる英文生成から構文解析、そして単語帳への保存までの一連の処理フローです。
-記事生成と解析で2回に分けてAPIを呼び出し、Geminiモデルを使い分ける（ハイブリッドアーキテクチャ）点が特徴です。
+最新ニュース検索機能（Tavily）と、生成・要約機能（Gemini 3.5 Flash-lite）を明確に責務分離している点が特徴です。
+
+### 英文記事の生成フロー (Web検索ON / OFF)
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant SPA as フロントエンド<br>(React)
+    participant APIGW as API Gateway
+    participant Lam as Lambda<br>(Rust)
+    participant Tav as Tavily API
+    participant Gem as Gemini API
+
+    U->>SPA: トピック選択 & Web検索ON/OFF指定して「生成」押下
+    SPA->>APIGW: POST /generate_text (action: "generate", topic_name, use_web_search)
+    APIGW->>Lam: APIキー検証 & プロキシ
+
+    alt use_web_search == true (最新ニュース検索)
+        Lam->>Tav: POST /search (直近ニュース3件取得)
+        alt 検索成功
+            Tav-->>Lam: ニュース記事一覧 & URL
+            Lam->>Gem: ニュースコンテキスト付きプロンプト送信 (3.5-flash-lite)
+            Gem-->>Lam: 生成英文 + source_url (JSON)
+            Lam-->>APIGW: 200 OK
+            APIGW-->>SPA: 英文テキスト + ソースURL (JSON)
+            SPA-->>U: 最新ニュースに基づく英文を表示
+        else 検索失敗 (エラーまたは0件)
+            Tav-->>Lam: エラー / 空結果
+            Lam-->>APIGW: 503 Web search failed
+            APIGW-->>SPA: 503 Service Unavailable
+            SPA-->>U: 検索失敗アラートを表示
+        end
+    else use_web_search == false (通常生成)
+        Lam->>Gem: トピック直接指定プロンプト送信 (3.5-flash-lite)
+        Gem-->>Lam: 生成英文 (source_url: null)
+        Lam-->>APIGW: 200 OK
+        APIGW-->>SPA: 英文テキスト (JSON)
+        SPA-->>U: 生成英文を表示
+    end
+```
+
+### 構文解析・単語抽出フロー
 
 ```mermaid
 sequenceDiagram
@@ -38,21 +80,12 @@ sequenceDiagram
     participant Lam as Lambda<br>(Rust)
     participant Gem as Gemini API
 
-    U->>SPA: トピックを選択して「生成」押下
-    SPA->>APIGW: POST /generate_text (action: "generate")
-    APIGW->>Lam: APIキー検証 & プロキシ
-    Lam->>Gem: 記事生成リクエスト (1.5-flash)
-    Gem-->>Lam: 英語長文テキスト
-    Lam-->>APIGW: 
-    APIGW-->>SPA: 英文テキスト (JSON)
-    SPA-->>U: 生成された英文を表示（リーディング画面）
-
     U->>SPA: 「構文・単語を解析する」タブを選択
-    SPA->>APIGW: POST /generate_text (action: "analyze")
+    SPA->>APIGW: POST /generate_text (action: "analyze", text)
     APIGW->>Lam: APIキー検証 & プロキシ
-    Lam->>Gem: 構文解析リクエスト (1.5-flash-lite)
-    Gem-->>Lam: セグメント・単語データ (JSON)
-    Lam-->>APIGW: 
+    Lam->>Gem: 構文・単語解析プロンプト送信 (3.5-flash-lite)
+    Gem-->>Lam: スラッシュ区切りセグメント・和訳・C1単語 (JSON)
+    Lam-->>APIGW: 200 OK
     APIGW-->>SPA: 解析結果 (JSON)
     SPA-->>U: インタラクティブな学習画面を表示
 ```
@@ -114,11 +147,17 @@ stateDiagram-v2
 ## 4. セキュリティ・認証設計
 
 - **認証方式**: 簡易APIキー認証（HTTP Header: `x-api-key`）
-- **キー管理**: バックエンド側（SSM Parameter Store / Lambda環境変数）でシークレットキーを保持し、フロントエンド側では初回アクセス時にユーザーが入力したキーを `sessionStorage` に保存して利用します。これにより、クライアントのソースコードへの直書きを回避します。
-- **検証ロジック**: API Gateway または Lambda の冒頭でヘッダーの `x-api-key` をチェック。不一致の場合は `401 Unauthorized` を返し、後続処理（Gemini API呼び出し・DynamoDBアクセス）を遮断します。
+- **キー管理**: バックエンド側（SSM Parameter Store / ローカル環境変数）で以下のシークレットを管理。
+  - `/eng-app/api-key`: フロントエンドとバックエンドで共有する認証キー
+  - `/eng-app/gemini-api-key`: Google Gemini APIキー
+  - `/eng-app/tavily-api-key`: Tavily AI Search APIキー
+  フロントエンド側では初回アクセス時にユーザーが入力したキーを `sessionStorage` に保存して利用します。これにより、クライアントのソースコードへの直書きを回避します。
+- **コールドスタート時のキーキャッシュ**: Lambdaの起動時（`main()`）にSSMから各APIキーを非同期取得してメモリにキャッシュ保持（`Arc<String>`）し、毎リクエストでのSSMフェッチ遅延を解消。
+- **検証ロジック**: API Gateway または Lambda の冒頭でヘッダーの `x-api-key` をチェック。不一致の場合は `401 Unauthorized` を返し、後続処理（Tavily/Gemini API呼び出し・DynamoDBアクセス）を遮断します。
 - **追加対策**: 
-  - CORS設定で許可オリジンを自ドメインに限定。
+  - CORS設定で許可オリジンを自ドメイン（および開発時はlocalhost）に限定。
   - API Gateway スロットリングを設定し、万一キーが流出しても大量のアクセスおよび課金を防ぎます。
+  - Web検索失敗時は曖昧なフォールバックを行わず、`503 Service Unavailable` を返却してユーザーにエラーを明示。
 
 ---
 

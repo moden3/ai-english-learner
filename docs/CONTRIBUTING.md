@@ -78,15 +78,23 @@ mise run dev:all
 VITE_API_URL=http://localhost:9000/lambda-url
 ```
 
-**`backend/.env`** (AIをダミーモードにしてAPI制限や課金を防ぐ)
+**`backend/.env`** (ローカル開発用設定)
 ```env
-USE_MOCK_AI=true
+APP_API_KEY=your-local-api-key
+
+# 1. 完全無料のダミーモードで開発する場合 (外部API通信ゼロ)
+#USE_MOCK_AI=true
+
+# 2. ローカルで実際のAI / Web検索をテストする場合
+# (設定するとAWS SSMにアクセスせず直接APIを利用できます)
+#GEMINI_API_KEY=AIzaSy-xxxxxxxxxxxxxxxx
+#TAVILY_API_KEY=tvly-xxxxxxxxxxxxxxxx
 ```
 > **📝 メモ: ダミーモードが作動する条件**
-> 無駄なAPIトークンの消費を防ぐため、以下のいずれかに該当する場合は Gemini API と通信せず、固定のダミーテキストを返却する。
-> 1. 上記のように `USE_MOCK_AI=true` 環境変数が設定されている場合
+> 無駄なAPIトークンの消費を防ぐため、以下のいずれかに該当する場合は Gemini / Tavily API と通信せず、固定のダミーテキストを返却する。
+> 1. `USE_MOCK_AI=true` 環境変数が設定されている場合
 > 2. フロントエンドで入力したトピック名が `test` または `dummy` で始まる場合
-> 3. AWS Systems Manager (SSM) からAPIキーが取得できない場合
+> 3. Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）の場合
 
 ブラウザで `http://localhost:5173` にアクセスし、正常に動作するか確認すること。
 （※確認が終わったら `frontend/.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
@@ -107,10 +115,11 @@ mise run deploy:all
 > - バックエンド・インフラのみ: `mise run deploy:infra`
 > - フロントエンドのみ: `mise run deploy:front`
 
-### 5.4 AWS環境の設定 (APIキー)
-デプロイ後、AWSコンソールで Systems Manager (パラメーターストア) を開き、設定を行う。
-1. **`/eng-app/gemini-api-key`**: ご自身の Gemini APIキー を設定して保存する。
-2. **`/eng-app/api-key`**: フロントエンドから呼び出す際の共通パスワードとなる文字列（例: `my-super-secret-key-123`）を設定して保存する。
+### 5.4 AWS環境の設定 (APIキー・シークレット)
+デプロイ後、AWSコンソールで Systems Manager (パラメーターストア) を開き、各パラメータの値を本番用の値に変更して保存する。
+1. **`/eng-app/api-key`**: フロントエンドから呼び出す際の共通パスワードとなる文字列（例: `my-super-secret-key-123`）を設定。
+2. **`/eng-app/gemini-api-key`**: Google AI Studio で取得した Gemini APIキー を設定。
+3. **`/eng-app/tavily-api-key`**: [Tavily](https://app.tavily.com/) で無料取得した Tavily APIキー（Web検索機能用）を設定。
 
-以上でデプロイは完了である！
-出力された `cloudfront_url` にアクセスし、「ENG-APP」のログイン画面が表示されれば成功である。
+以上でデプロイは完了。
+出力された `cloudfront_url` にアクセスし、「ENG-APP」のログイン画面が表示されれば成功となる。
