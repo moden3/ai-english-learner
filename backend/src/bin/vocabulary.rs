@@ -220,11 +220,12 @@ mod tests {
         let request = HttpRequest::builder()
             .method(Method::GET)
             .uri("/vocabulary")
+            .header("x-api-key", "test_key")
             .body(Body::Empty)
             .expect("failed to build request");
 
         let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table", "")
+        let response = function_handler(request, client, "dummy_table", "test_key")
             .await
             .expect("handler failed");
 
@@ -245,12 +246,13 @@ mod tests {
         let request = HttpRequest::builder()
             .method(Method::POST)
             .uri("/vocabulary")
+            .header("x-api-key", "test_key")
             .header("content-type", "application/json")
             .body(Body::Text(payload.to_string()))
             .expect("failed to build request");
 
         let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table", "")
+        let response = function_handler(request, client, "dummy_table", "test_key")
             .await
             .expect("handler failed");
 

@@ -10,4 +10,11 @@ echo "☁️ Initializing terraform..."
 cd ../backend/infra
 terraform init
 
+echo "🧪 Setting up test & coverage tools..."
+rustup component add llvm-tools-preview
+if ! command -v cargo-llvm-cov &> /dev/null; then
+    echo "Installing cargo-llvm-cov..."
+    cargo install cargo-llvm-cov --locked
+fi
+
 echo "✅ Setup complete!"

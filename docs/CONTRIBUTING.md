@@ -99,6 +99,20 @@ APP_API_KEY=your-local-api-key
 ブラウザで `http://localhost:5173` にアクセスし、正常に動作するか確認すること。
 （※確認が終わったら `frontend/.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
 
+### 4.3 自動テストとコードカバレッジの実行 (Unit & Mock Tests)
+以下のコマンドで、外部ネットワーク通信を行わず安全かつ高速に全テスト（単体テスト＋wiremockによる外部APIモック結合テスト）を実行できる。
+実行時に、**ターミナルへのカバレッジサマリー出力** と **HTMLカバレッジレポートの自動生成** がデフォルトで両方行われる。
+
+```bash
+mise run test
+```
+
+> **HTMLレポートのブラウザ閲覧**
+> 生成されたレポート（行ごとの網羅状況・カラーハイライト）は以下で直接開くことができる：
+> ```bash
+> xdg-open backend/target/llvm-cov/html/index.html
+> ```
+
 ---
 
 ## 5. 本番環境 (AWS) へのデプロイ

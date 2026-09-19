@@ -227,11 +227,12 @@ mod tests {
         let request = HttpRequest::builder()
             .method(Method::GET)
             .uri("/topics")
+            .header("x-api-key", "test_key")
             .body(Body::Empty)
             .expect("failed to build request");
 
         let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table", "")
+        let response = function_handler(request, client, "dummy_table", "test_key")
             .await
             .expect("handler failed");
 

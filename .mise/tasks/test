@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# mise description="Run backend tests with terminal and HTML coverage reports"
+set -euo pipefail
+
+cd backend
+
+echo "🧪 Running backend tests with code coverage..."
+cargo llvm-cov --workspace "$@"
+cargo llvm-cov report --html
+
+echo "📄 HTML coverage report generated at: backend/target/llvm-cov/html/index.html"
