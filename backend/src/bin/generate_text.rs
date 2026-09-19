@@ -189,7 +189,7 @@ async fn function_handler(
     let prompt = if action == "analyze" {
         let text_to_analyze = req_body.text.unwrap_or_default();
         format!(
-            "You are an English teacher. Break down the following english text into segments (chunks of meaning), translate each segment into Japanese, and provide a short grammar note for each. Also, extract highly advanced business keywords or idioms (CEFR C1 level) from the text. Skip basic and intermediate words (A1-B2) as the user already knows them (TOEIC 800+). Extract a maximum of 10 words. Do NOT include literal slash characters ('/') in the text.
+            "You are an English teacher. Break down the following english text into segments (chunks of meaning), translate each segment into Japanese, and provide a short grammar note for each. Also, extract highly advanced business keywords or idioms (CEFR B2-C1 level) from the text. Skip basic and intermediate words (A1-B2) as the user already knows them (TOEIC 800+). Extract a maximum of 10 words. Do NOT include literal slash characters ('/') in the text.
 Text to analyze: \"{}\"
 You MUST output strictly in valid JSON format matching this schema exactly:
 {{
@@ -209,20 +209,19 @@ You MUST output strictly in valid JSON format matching this schema exactly:
 
         if use_web_search {
             // Tavily APIを呼び出す。失敗した場合は503を返して生成失敗とする
-            let results =
-                match call_tavily_search(&http_client, &tavily_api_key, &topic_name).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        println!("Tavily search failed: {}", e);
-                        return Ok(Response::builder()
-                            .status(503)
-                            .body(Body::Text(
-                                "Web search failed. Please try again or disable web search."
-                                    .into(),
-                            ))
-                            .expect("failed to render response"));
-                    }
-                };
+            let results = match call_tavily_search(&http_client, &tavily_api_key, &topic_name).await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("Tavily search failed: {}", e);
+                    return Ok(Response::builder()
+                        .status(503)
+                        .body(Body::Text(
+                            "Web search failed. Please try again or disable web search.".into(),
+                        ))
+                        .expect("failed to render response"));
+                }
+            };
 
             // 最初の記事のURLをsource_urlとして使用
             let source_url = &results[0].url;
@@ -396,15 +395,9 @@ mod tests {
         let gemini_api_key = Arc::new(String::new());
         let tavily_api_key = Arc::new(String::new());
 
-        let response = function_handler(
-            request,
-            http_client,
-            "",
-            gemini_api_key,
-            tavily_api_key,
-        )
-        .await
-        .expect("handler failed");
+        let response = function_handler(request, http_client, "", gemini_api_key, tavily_api_key)
+            .await
+            .expect("handler failed");
 
         // api_keyが空文字 → Unauthorized (401) になるはず
         assert_eq!(
