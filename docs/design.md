@@ -179,3 +179,31 @@ stateDiagram-v2
 APIの設計仕様（リクエスト・レスポンス・パス）については、以下の独立したドキュメントで管理しています。
 
 👉 **[Web API エンドポイント仕様一覧 (docs/api/endpoints.md)](./api/endpoints.md)**
+
+---
+
+## 7. テスト設計とモック分離（Testability）
+
+本システムは、CI環境および手元での継続的テストを可能にするため、外部APIへの依存を完全にモック分離したテスタビリティ構造を備えています。
+
+### 7.1 バックエンド・テスト設計 (`backend/src`)
+* **依存性注入 (Dependency Injection)**:
+  `generate_text` ハンドラは外部APIのエンドポイントURLを保持する `ApiEndpoints` 構造体を受け取ります。本番環境ではデフォルト値（公式URL）を使用し、テスト環境ではローカルの `wiremock::MockServer` のURLを注入します。
+* **純粋関数の抽出 (`lib.rs`)**:
+  プロンプト生成（`build_generate_prompt`, `build_analyze_prompt`）や、Markdownブロック除去・JSON抽出（`extract_json_payload`）、認証検証（`validate_api_key`）などのロジックを副作用のない純粋関数として切り出し、単体テストを網羅。
+* **カバレッジ測定**:
+  `cargo-llvm-cov` を用いて、テスト実行と同時にターミナルサマリーおよびHTMLレポート（`backend/target/llvm-cov/html/index.html`）を生成。
+
+### 7.2 フロントエンド・テスト設計 (`frontend/src`)
+* **Vitest + React Testing Library**:
+  ブラウザ起動のオーバーヘッドを排し、`jsdom` 環境で React 19 コンポーネントの状態変化、非同期ローディング、バリデーションを高速（数秒）に検証。
+* **ネットワーク通信の完全モック**:
+  `api.ts` の `fetch` 処理はテスト内でモック化され、実際のAPI Gatewayやバックエンドとの通信を行いません。401認証切れ時の自動セッション破棄や、503障害時のエラーメッセージ表示などのエッジケースを自在にシミュレート可能。
+
+### 7.3 テスト実行コマンド (Mise)
+```bash
+mise run test:all    # バックエンド ＋ フロントエンド一括実行 (計63件 PASS)
+mise run test:back   # バックエンド（Rust）のみ
+mise run test:front  # フロントエンド（Vitest）のみ
+```
+

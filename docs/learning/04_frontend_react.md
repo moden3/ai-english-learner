@@ -137,3 +137,32 @@ useEffect(() => {
 AWS側のAPIキー、Gemini APIキー、Tavily APIキーは、コードに直書きせず **SSM Parameter Store** に保存し、Lambdaが起動時（コールドスタート時）に一括キャッシュ読み込みを行う。
 
 （※初期構築時ダミー値を使用し、コンソールで本物に差し替えるIaCとセキュリティを両立させるTerraformの実装例については `02_terraform_infrastructure.md` のトピック5を参照）
+
+---
+
+## フロントエンドの自動テスト戦略 (Vitest + React Testing Library)
+
+SPAにおけるUI状態管理とAPI連携の堅牢性を保証するため、ブラウザを起動せず `jsdom` 上で数秒で完結する自動テスト基盤を構築。
+
+### 1. テスト構成と検証スコープ (全40件)
+- **`src/api.test.ts` (14件)**:
+  `fetch` をモック化し、`sessionStorage` 認証ヘッダーの付与、401時の自動セッション破棄・リロード、各API（Topics, Vocabulary, Generate, Analyze）のPayload構造を単体検証。
+- **`src/components/Login.test.tsx` (5件)**:
+  キー入力バリデーション、検証中ローディング状態、不一致時エラーメッセージ表示、ログイン成功時のコールバック。
+- **`src/components/TopicManager.test.tsx` (6件)**:
+  一覧描画、新規追加（空文字ガード）、確認ダイアログ付き削除。
+- **`src/components/VocabularyManager.test.tsx` (5件)**:
+  単語帳一覧描画、単語＋和訳の入力・登録、削除フロー。
+- **`src/components/TextGenerator.test.tsx` (5件)**:
+  Web検索ON/OFFチェックボックス、生成中スピナー表示、生成結果描画、Slash Reading タブクリックでの構文解析自動実行、アコーディオン開閉（和訳・文法解説表示）、単語帳への保存。
+- **`src/App.test.tsx` (5件)**:
+  認証状態による表示切り替え（Login ⇔ Dashboard）、サイドバーのタブ遷移、ログアウトフロー。
+
+### 2. テストの実行方法
+```bash
+# フロントエンドテスト単体実行 (約5秒)
+mise run test:front
+
+# フロントエンド開発時の自動再実行 (ウォッチモード)
+cd frontend && npm run test:watch
+```

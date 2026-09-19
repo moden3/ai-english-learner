@@ -42,15 +42,53 @@ graph TD
 ## 3. ディレクトリ・モジュール構成方針
 
 ```
-ai-english-learner/      # プロジェクトルート
-├── backend/             # サーバー側リポジトリ
-│   ├── infra/           # Terraformコード
-│   └── src/             # Rustコード (binごとに各Lambda関数を定義)
-├── docs/                # ドキュメントディレクトリ
-│   ├── architecture.md  # 本ドキュメント
-│   ├── requirements.md  # 要件定義
-│   └── CONTRIBUTING.md  # 開発手順書
-├── frontend/            # クライアント側リポジトリ
-│   └── src/             # Vite + React のソースコード
-└── README.md            # プロジェクト概要
+ai-english-learner/          # プロジェクトルート
+├── .mise/tasks/             # タスクランナー定義
+│   ├── dev/                 # ローカル開発用 (back, front)
+│   ├── deploy/              # 本番デプロイ用 (infra, front, all)
+│   ├── test/                # 自動テスト用 (back, front, all)
+│   └── setup                # 初期環境構築スクリプト
+├── backend/                 # サーバー側リポジトリ (Rust)
+│   ├── infra/               # Terraformコード (AWSリソース定義)
+│   └── src/                 # Rustコード (lib.rs: 共通純粋関数, bin/: 各Lambda関数)
+├── docs/                    # ドキュメントディレクトリ
+│   ├── architecture.md      # 本ドキュメント
+│   ├── design.md            # 基本設計書
+│   ├── requirements.md      # 要件定義
+│   ├── CONTRIBUTING.md      # 開発手順書
+│   └── learning/            # 学習・設計判断の記録 (ADR等)
+├── frontend/                # クライアント側リポジトリ (Vite + React 19)
+│   └── src/                 # Reactソースコード (components/, test/)
+└── README.md                # プロジェクト概要
 ```
+
+---
+
+## 4. テストアーキテクチャ（モック分離）
+
+本システムは、CI環境や手元開発で外部APIトークンを1ミリも消費せず、高速・安定して実行可能なモック分離アーキテクチャを採用しています。
+
+```mermaid
+graph LR
+    subgraph Frontend Test ["Frontend Test (Vitest + RTL)"]
+        Components["UI Components<br/>(Login, TextGen, etc.)"]
+        MockFetch["vi.spyOn(fetch)<br/>インメモリAPIモック"]
+        Components <--> MockFetch
+    end
+
+    subgraph Backend Test ["Backend Test (cargo llvm-cov)"]
+        Handlers["Lambda Handlers<br/>(generate_text, topics, vocab)"]
+        PureFuncs["Pure Functions<br/>(lib.rs: プロンプト/JSON)"]
+        WireMock["wiremock::MockServer<br/>(ローカルHTTPモック)"]
+        
+        Handlers --> PureFuncs
+        Handlers <-->|注入されたモックURL| WireMock
+    end
+
+    Mise["mise run test:all<br/>(一括テストランナー)"] --> FrontendTest
+    Mise --> BackendTest
+```
+
+- **フロントエンド**: `Vitest` 上でブラウザの `fetch` を直接モック化。API Gateway やバックエンドを起動せずにコンポーネントの状態遷移を数秒で検証。
+- **バックエンド**: `wiremock` によりローカルで HTTP モックサーバーを立ち上げ、`ApiEndpoints` を注入することで Tavily や Gemini との通信を完全シミュレート。
+

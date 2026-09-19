@@ -69,3 +69,26 @@ pub async fn get_gemini_api_key(ssm_client: &SsmClient) -> String {
 }
 ```
 これにより、AWSの認証情報を意識せず、ローカル完結で実APIの疎通・プロンプト検証を安全に行うことができる。
+
+---
+
+## 4. 自動テストとコードカバレッジ (Mise + wiremock + Vitest)
+
+開発者が日常的に素早く品質検証を行えるよう、タスクランナー `mise` を起点とした自動テスト基盤を整備している。
+
+```bash
+# 全体テスト (バックエンド カバレッジ + フロントエンド テスト: 計63件)
+mise run test:all
+
+# 個別実行
+mise run test:back    # Rust 単体・HTTPモックテスト (約8秒)
+mise run test:front   # Vitest フロントエンドコンポーネントテスト (約5秒)
+```
+
+### バックエンドのコードカバレッジ (`cargo-llvm-cov`)
+LLVMのソースコードインストルメンテーションを活用し、行単位・関数単位の網羅率を正確に計測。
+実行時にターミナル出力と同時にHTMLレポートが `backend/target/llvm-cov/html/index.html` に自動生成され、ブラウザで未カバー行をカラー確認できる。
+
+### フロントエンドの高速コンポーネントテスト (`Vitest`)
+Viteと設定を共有し、ブラウザを起動せずメモリ上の `jsdom` で React 19 コンポーネントを検証。UIの表示、入力、タブ遷移、ローディングスピナー、エラー表示などを約5秒で全件自動テストできる。
+
