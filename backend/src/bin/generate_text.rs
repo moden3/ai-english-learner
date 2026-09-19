@@ -154,12 +154,10 @@ async fn function_handler(
     };
 
     // ダミーモードの判定
-    // 1. 環境変数 USE_MOCK_AI が設定されている
-    // 2. トピック名が "test" または "dummy" で始まる
-    // 3. Gemini APIキーが未設定（空文字 or プレースホルダー）
+    // 1. トピック名が "test" または "dummy" で始まる
+    // 2. Gemini APIキーが未設定（空文字 or プレースホルダー）
     let topic_name = req_body.topic_name.clone().unwrap_or_default();
-    let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok()
-        || topic_name.to_lowercase().starts_with("test")
+    let is_dummy_mode = topic_name.to_lowercase().starts_with("test")
         || topic_name.to_lowercase().starts_with("dummy")
         || gemini_api_key.is_empty()
         || gemini_api_key.as_str() == "CHANGE_ME_GEMINI_KEY";

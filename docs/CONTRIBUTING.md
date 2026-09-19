@@ -82,35 +82,42 @@ VITE_API_URL=http://localhost:9000/lambda-url
 ```env
 APP_API_KEY=your-local-api-key
 
-# 1. 完全無料のダミーモードで開発する場合 (外部API通信ゼロ)
-#USE_MOCK_AI=true
-
-# 2. ローカルで実際のAI / Web検索をテストする場合
+# ローカルで実際のAI / Web検索をテストする場合
 # (設定するとAWS SSMにアクセスせず直接APIを利用できます)
 #GEMINI_API_KEY=AIzaSy-xxxxxxxxxxxxxxxx
 #TAVILY_API_KEY=tvly-xxxxxxxxxxxxxxxx
 ```
 > **📝 メモ: ダミーモードが作動する条件**
 > 無駄なAPIトークンの消費を防ぐため、以下のいずれかに該当する場合は Gemini / Tavily API と通信せず、固定のダミーテキストを返却する。
-> 1. `USE_MOCK_AI=true` 環境変数が設定されている場合
-> 2. フロントエンドで入力したトピック名が `test` または `dummy` で始まる場合
-> 3. Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）の場合
+> 1. フロントエンドで選択・入力したトピック名が `test` または `dummy` で始まる場合
+> 2. Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）の場合
 
 ブラウザで `http://localhost:5173` にアクセスし、正常に動作するか確認すること。
 （※確認が終わったら `frontend/.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
 
 ### 4.3 自動テストとコードカバレッジの実行 (Unit & Mock Tests)
-以下のコマンドで、外部ネットワーク通信を行わず安全かつ高速に全テスト（単体テスト＋wiremockによる外部APIモック結合テスト）を実行できる。
-実行時に、**ターミナルへのカバレッジサマリー出力** と **HTMLカバレッジレポートの自動生成** がデフォルトで両方行われる。
+以下のコマンドで、外部ネットワーク通信を行わず安全かつ高速にバックエンド（Rust）とフロントエンド（Vitest + React Testing Library）の全テスト（計63件）を一括実行できる。
+バックエンド側では **ターミナルへのカバレッジサマリー出力** と **HTMLカバレッジレポートの自動生成** が行われる。
 
 ```bash
-mise run test
+# バックエンド ＋ フロントエンドの全テストを一括実行
+mise run test:all
+
+# 個別実行したい場合
+mise run test:back    # バックエンド（Rust）のみ
+mise run test:front   # フロントエンド（Vitest）のみ
 ```
 
-> **HTMLレポートのブラウザ閲覧**
+> **バックエンド HTMLカバレッジレポートのブラウザ閲覧**
 > 生成されたレポート（行ごとの網羅状況・カラーハイライト）は以下で直接開くことができる：
 > ```bash
 > xdg-open backend/target/llvm-cov/html/index.html
+> ```
+
+> **フロントエンドのウォッチモード起動**
+> フロントエンド開発中にテストを自動再実行したい場合：
+> ```bash
+> cd frontend && npm run test:watch
 > ```
 
 ---

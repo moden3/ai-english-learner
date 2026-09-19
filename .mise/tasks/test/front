@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# mise description="Run frontend component and unit tests (Vitest)"
+set -euo pipefail
+
+cd frontend
+echo "⚛️  Running frontend component tests..."
+npm run test "$@"

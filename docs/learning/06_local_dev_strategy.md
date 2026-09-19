@@ -36,14 +36,12 @@ UI微調整のたびに本物のGemini / Tavily APIを叩くと利用上限（�
 
 ### ダミーモードの発動条件
 以下のいずれかを満たした場合、外部API通信をスキップして**固定のダミーJSON**を即座に返す。
-1. **環境変数**: `.env` に `USE_MOCK_AI=true` がある。
-2. **マジックワード**: 入力トピック名が `test` や `dummy` で始まる。
-3. **APIキー未設定**: Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）。
+1. **マジックワード**: 入力トピック名が `test` や `dummy` で始まる。
+2. **APIキー未設定**: Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）。
 
 ```rust
 // ダミー判定ロジック (backend/src/bin/generate_text.rs)
-let is_dummy_mode = std::env::var("USE_MOCK_AI").is_ok()
-    || topic_name.to_lowercase().starts_with("test")
+let is_dummy_mode = topic_name.to_lowercase().starts_with("test")
     || topic_name.to_lowercase().starts_with("dummy")
     || gemini_api_key.is_empty()
     || gemini_api_key.as_str() == "CHANGE_ME_GEMINI_KEY";
