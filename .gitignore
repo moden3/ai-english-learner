@@ -30,12 +30,14 @@ terraform.rc
 *.zip
 
 # ----------------------------------------------------------------------
-# Node.js / React (Vite)
+# Node.js / React (Vite) & Playwright
 # ----------------------------------------------------------------------
 /frontend/node_modules/
 /frontend/dist/
 /frontend/dist-ssr/
 /frontend/*.local
+/frontend/test-results/
+/frontend/playwright-report/
 .env
 .env.*
 !.env.example

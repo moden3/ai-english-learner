@@ -1,3 +1,7 @@
 [tools]
 node = "20"
 terraform = "1.5"
+
+[env]
+_.path = ["{{env.HOME}}/.local/bin", "{{env.HOME}}/.cargo/bin"]
+LD_LIBRARY_PATH = "{{env.HOME}}/.local/playwright-libs/usr/lib/x86_64-linux-gnu"

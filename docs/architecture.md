@@ -46,8 +46,8 @@ ai-english-learner/          # プロジェクトルート
 ├── .mise/tasks/             # タスクランナー定義
 │   ├── dev/                 # ローカル開発用 (back, front)
 │   ├── deploy/              # 本番デプロイ用 (infra, front, all)
-│   ├── test/                # 自動テスト用 (back, front, all)
-│   └── setup                # 初期環境構築スクリプト
+│   ├── test/                # 自動テスト用 (back, front, e2e, all)
+│   └── setup                # 初期環境構築スクリプト (Rust, Cargo Lambda, Playwright, Node, Terraform)
 ├── backend/                 # サーバー側リポジトリ (Rust)
 │   ├── infra/               # Terraformコード (AWSリソース定義)
 │   └── src/                 # Rustコード (lib.rs: 共通純粋関数, bin/: 各Lambda関数)
@@ -58,25 +58,23 @@ ai-english-learner/          # プロジェクトルート
 │   ├── CONTRIBUTING.md      # 開発手順書
 │   └── learning/            # 学習・設計判断の記録 (ADR等)
 ├── frontend/                # クライアント側リポジトリ (Vite + React 19)
+│   ├── e2e/                 # 実ブラウザE2Eテスト (Playwright: mocks.ts, *.spec.ts)
+│   ├── playwright.config.ts # Playwright 設定 (Vite 開発サーバー自動連動)
 │   └── src/                 # Reactソースコード (components/, test/)
 └── README.md                # プロジェクト概要
 ```
 
 ---
 
-## 4. テストアーキテクチャ（モック分離）
+## 4. テストアーキテクチャ（3層モック分離）
 
-本システムは、CI環境や手元開発で外部APIトークンを1ミリも消費せず、高速・安定して実行可能なモック分離アーキテクチャを採用しています。
+本システムは、CI環境や手元開発で外部APIトークンを一切消費せず、安全・高速に実行可能な3層の自動テストアーキテクチャ（計69テスト）を採用しています。
 
 ```mermaid
-graph LR
-    subgraph Frontend Test ["Frontend Test (Vitest + RTL)"]
-        Components["UI Components<br/>(Login, TextGen, etc.)"]
-        MockFetch["vi.spyOn(fetch)<br/>インメモリAPIモック"]
-        Components <--> MockFetch
-    end
+graph TD
+    Mise["mise run test:all<br/>(一括テストランナー)"]
 
-    subgraph Backend Test ["Backend Test (cargo llvm-cov)"]
+    subgraph BackendTest ["1. バックエンド テスト (cargo-llvm-cov)"]
         Handlers["Lambda Handlers<br/>(generate_text, topics, vocab)"]
         PureFuncs["Pure Functions<br/>(lib.rs: プロンプト/JSON)"]
         WireMock["wiremock::MockServer<br/>(ローカルHTTPモック)"]
@@ -85,10 +83,24 @@ graph LR
         Handlers <-->|注入されたモックURL| WireMock
     end
 
-    Mise["mise run test:all<br/>(一括テストランナー)"] --> FrontendTest
+    subgraph FrontendTest ["2. フロントエンド単体テスト (Vitest + RTL)"]
+        Components["UI Components<br/>(Login, TextGen, etc.)"]
+        MockFetch["vi.spyOn(fetch)<br/>インメモリAPIモック"]
+        Components <--> MockFetch
+    end
+
+    subgraph E2ETest ["3. フロントエンド E2E テスト (Playwright)"]
+        Browser["Chromium Headless / Headed<br/>(実ブラウザ操作)"]
+        RouteIntercept["page.route(RegExp)<br/>ネットワーク完全遮断モック"]
+        Browser <-->|外部通信・トークン消費ゼロ| RouteIntercept
+    end
+
     Mise --> BackendTest
+    Mise --> FrontendTest
+    Mise --> E2ETest
 ```
 
-- **フロントエンド**: `Vitest` 上でブラウザの `fetch` を直接モック化。API Gateway やバックエンドを起動せずにコンポーネントの状態遷移を数秒で検証。
-- **バックエンド**: `wiremock` によりローカルで HTTP モックサーバーを立ち上げ、`ApiEndpoints` を注入することで Tavily や Gemini との通信を完全シミュレート。
+- **バックエンド (23件)**: `wiremock` によりローカルで HTTP モックサーバーを立ち上げ、`ApiEndpoints` を注入することで Tavily や Gemini との通信を完全シミュレート。`cargo-llvm-cov` で行カバレッジとHTMLレポートを出力。
+- **フロントエンド単体・コンポーネント (40件)**: `Vitest` 上でブラウザの `fetch` を直接モック化。API Gateway やバックエンドを起動せずにコンポーネントの状態遷移を数秒で検証。
+- **フロントエンド E2E (6件)**: `Playwright` により実ブラウザでログインから記事生成、スラッシュリーディング表示、単語帳登録までの実操作シナリオを検証。`page.route` によるネットワーク完全遮断でトークン消費ゼロを保証。
 

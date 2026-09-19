@@ -140,29 +140,86 @@ AWS側のAPIキー、Gemini APIキー、Tavily APIキーは、コードに直書
 
 ---
 
-## フロントエンドの自動テスト戦略 (Vitest + React Testing Library)
+## フロントエンドのテスト戦略とモック技術 (Vitest & Playwright)
 
-SPAにおけるUI状態管理とAPI連携の堅牢性を保証するため、ブラウザを起動せず `jsdom` 上で数秒で完結する自動テスト基盤を構築。
+モダンなReactアプリケーションにおいて、安定したUIとユーザー体験（UX）を保証するには、「単体・コンポーネントテスト」と「実ブラウザによるE2Eテスト」を適切に使い分け、外部依存を的確にモック化することが重要です。
 
-### 1. テスト構成と検証スコープ (全40件)
-- **`src/api.test.ts` (14件)**:
-  `fetch` をモック化し、`sessionStorage` 認証ヘッダーの付与、401時の自動セッション破棄・リロード、各API（Topics, Vocabulary, Generate, Analyze）のPayload構造を単体検証。
-- **`src/components/Login.test.tsx` (5件)**:
-  キー入力バリデーション、検証中ローディング状態、不一致時エラーメッセージ表示、ログイン成功時のコールバック。
-- **`src/components/TopicManager.test.tsx` (6件)**:
-  一覧描画、新規追加（空文字ガード）、確認ダイアログ付き削除。
-- **`src/components/VocabularyManager.test.tsx` (5件)**:
-  単語帳一覧描画、単語＋和訳の入力・登録、削除フロー。
-- **`src/components/TextGenerator.test.tsx` (5件)**:
-  Web検索ON/OFFチェックボックス、生成中スピナー表示、生成結果描画、Slash Reading タブクリックでの構文解析自動実行、アコーディオン開閉（和訳・文法解説表示）、単語帳への保存。
-- **`src/App.test.tsx` (5件)**:
-  認証状態による表示切り替え（Login ⇔ Dashboard）、サイドバーのタブ遷移、ログアウトフロー。
+### 1. 2つのテストレイヤーの役割分担
 
-### 2. テストの実行方法
-```bash
-# フロントエンドテスト単体実行 (約5秒)
-mise run test:front
+| レイヤー | ツール | 実行環境 | 主な検証スコープ | 実行速度 |
+| :--- | :--- | :--- | :--- | :--- |
+| **単体・コンポーネントテスト** | **Vitest + RTL** | Node.js (`jsdom`) | 単一コンポーネントの描画、Props/Stateの変化、バリデーション、ローディング表示、ボタンの活性/非活性 | **極めて高速** (全件で数秒) |
+| **実ブラウザ E2E テスト** | **Playwright** | 実ブラウザ (Chromium) | 画面を跨ぐユーザー操作フロー、ページリロード時のストレージ永続化、ネイティブダイアログ (`confirm`)、CSS描画 | **中速** (全件で約10秒) |
 
-# フロントエンド開発時の自動再実行 (ウォッチモード)
-cd frontend && npm run test:watch
-```
+- **Vitest（コンポーネントテスト）の強み**: ブラウザを立ち上げないためフィードバックが高速。UIの細かな条件分岐（入力不備時のエラー表示やスピナー表示）を網羅するのに最適。
+- **Playwright（E2Eテスト）の強み**: `jsdom` ではエミュレートしきれない「本物のブラウザのイベント伝搬」「同期モーダルダイアログ」「CSS Glassmorphism の描画」「Cookie/Storageのライフサイクル」を結合して検証可能。
+
+---
+
+### 2. どこをどうやってモック化するか（モック設計パターン）
+
+外部API（Gemini, Tavily, AWS）との通信やブラウザネイティブの機能をどのようにモック化するか、テストレイヤーごとの手法を整理します。
+
+#### ① Web API通信 (`fetch`) のモック化
+
+* **Vitestの場合 (インメモリのグローバルモック)**:
+  `vi.spyOn(globalThis, 'fetch')` を用いて、ブラウザの `fetch` をテストプロセス内で差し替えます。
+  ```ts
+  // 正常系レスポンスのモック
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify(mockData), { status: 200 }));
+  
+  // 401 Unauthorized や 503 障害のモック
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }));
+  ```
+  これにより、ネットワーク通信を発生させずに通信前後のコンポーネント状態をミリ秒で検証できます。
+
+* **Playwrightの場合 (ネットワークインターセプト `page.route`)**:
+  実ブラウザから発信されるHTTPリクエストをブラウザ層でキャッチし、外部通信を行わせずにモックレスポンスを返します。
+  ```ts
+  // 正規表現でAPIリクエストを捕捉し、モックレスポンスを返却
+  await page.route(/\/generate_text/, async (route) => {
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockAnalyzeResult),
+    });
+  });
+  ```
+  **この設計の利点**:
+  - 実ブラウザテストでありながら、**バックエンドサーバーの事前起動が一切不要**（Vite開発サーバーのみで完結）。
+  - Gemini / Tavily / AWS への通信が1ミリも発生しないため、**トークン消費ゼロ・API課金ゼロ**を100%保証。
+
+#### ② ブラウザ固有ストレージ (`sessionStorage`) のモックと検証
+
+APIキーや認証状態の保持をテストする場合、テストケースごとにストレージの初期状態を注入します。
+- **Vitest**: `sessionStorage.setItem('api_key', 'test-key')` を `beforeEach` でセット。401エラー発生時に `sessionStorage.removeItem` が実行されるかをアサート。
+- **Playwright**: ログインフォームへの入力・送信を通じてストレージに保存させ、`page.reload()` 実行後もログイン状態が維持されているかを実ブラウザ上で検証。
+
+#### ③ ネイティブダイアログ (`window.confirm` / `alert`) のハンドリング
+
+要素削除時の「本当に削除しますか？」などの確認ダイアログは、JavaScriptの実行スレッドを同期的（モーダル）にブロックします。
+- **Vitest**: `window.confirm = vi.fn().mockReturnValue(true)` で真偽値を即座に返すようモック。
+- **Playwright**:
+  - 同期ダイアログ（クリックと同時に発火）: `page.once('dialog', dialog => dialog.accept())` をクリック前に登録して自動承認。
+  - 非同期API完了後のダイアログ（保存完了の `alert` 等）: `const dialogPromise = page.waitForEvent('dialog')` で待機し、メッセージ内容をアサート。
+
+---
+
+### 3. 非同期UIと待機戦略 (Async Testing)
+
+API通信を伴うUIテストでは、「クリックした瞬間にすぐアサートする」とテストが失敗します。
+- **要素の出現待ち**: `getByText`（即座に同期取得）ではなく、`findByText` や `expect(locator).toBeVisible()`（ポーリング待機）を使用することで、非同期通信後のDOM描画をフレイキー（不安定）にならずに検証。
+- **多重送信防止の検証**: 送信ボタン押下直後に `disabled` 属性が付与され、通信完了後に解除されるかをテスト。
+
+---
+
+### 4. 視覚的テスト・デバッグ技術 (Playwright)
+
+Playwright では、ヘッドレスでのCI実行だけでなく、開発者が画面を見ながら直感的にデバッグできるモードが用意されています。
+
+- **インタラクティブ UI モード (`--ui`)**:
+  GUIダッシュボードが立ち上がり、操作ステップごとのタイムトラベル（DOM・通信スナップショットの再現）やテストの個別再生が可能。
+- **Headed モード (`--headed`)**:
+  実際の Chromium ウィンドウが開き、自動入力・クリックの様子を肉眼で確認。`--workers=1` を指定することで1つずつじっくり観察可能。
+- **ステップ実行デバッグ (`--debug`)**:
+  Playwright Inspector が起動し、1行ずつ「Step Over」しながら要素のセレクターや挙動を検証。

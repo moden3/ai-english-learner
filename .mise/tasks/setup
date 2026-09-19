@@ -1,20 +1,96 @@
 #!/usr/bin/env bash
-# mise description="Install frontend dependencies and init terraform"
-set -e
+# mise description="Install dependencies, tools (Rust, Cargo Lambda, Playwright), and init terraform"
+set -euo pipefail
 
-echo "📦 Installing frontend dependencies..."
-cd frontend
-npm install
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "☁️ Initializing terraform..."
-cd ../backend/infra
-terraform init
+# Ensure ~/.local/bin and ~/.cargo/bin are available in current session
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
-echo "🧪 Setting up test & coverage tools..."
+# ----------------------------------------------------------------------
+# 1. Rust ツールチェーンのセットアップ
+# ----------------------------------------------------------------------
+echo "🦀 Setting up Rust toolchain..."
+if ! command -v rustup &> /dev/null && ! command -v cargo &> /dev/null; then
+    echo "Rust not found. Installing rustup and stable toolchain..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+    [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+else
+    echo "Rust is already installed."
+fi
+
+# ----------------------------------------------------------------------
+# 2. Cargo Lambda のセットアップ
+# ----------------------------------------------------------------------
+echo "⚡ Setting up Cargo Lambda..."
+if ! command -v cargo-lambda &> /dev/null && ! cargo lambda --version &> /dev/null; then
+    echo "Installing cargo-lambda..."
+    if command -v pip3 &> /dev/null; then
+        pip3 install --user cargo-lambda
+    elif command -v brew &> /dev/null; then
+        brew install cargo-lambda
+    else
+        cargo install cargo-lambda --locked
+    fi
+else
+    echo "Cargo Lambda is already installed."
+fi
+
+# ----------------------------------------------------------------------
+# 3. バックエンドのテスト・カバレッジツールのセットアップ
+# ----------------------------------------------------------------------
+echo "🧪 Setting up backend test & coverage tools..."
 rustup component add llvm-tools-preview
 if ! command -v cargo-llvm-cov &> /dev/null; then
     echo "Installing cargo-llvm-cov..."
     cargo install cargo-llvm-cov --locked
 fi
 
-echo "✅ Setup complete!"
+# ----------------------------------------------------------------------
+# 4. フロントエンド依存パッケージの導入
+# ----------------------------------------------------------------------
+echo "📦 Installing frontend dependencies..."
+cd "$PROJECT_ROOT/frontend"
+npm install
+
+# ----------------------------------------------------------------------
+# 5. Playwright ヘッドレスブラウザ・共有ライブラリのセットアップ
+# ----------------------------------------------------------------------
+echo "🎭 Setting up Playwright browser dependencies..."
+npx playwright install chromium
+
+# Linux 環境におけるヘッドレスブラウザ共有ライブラリの依存解決
+if [ "$(uname -s)" = "Linux" ]; then
+    if sudo -n true 2>/dev/null; then
+        echo "Installing system dependencies via playwright install-deps..."
+        npx playwright install-deps chromium 2>/dev/null || true
+    fi
+
+    PLAYWRIGHT_LIB_DIR="$HOME/.local/playwright-libs"
+    if ! ldconfig -p 2>/dev/null | grep -q "libnss3.so"; then
+        if [ ! -f "$PLAYWRIGHT_LIB_DIR/usr/lib/x86_64-linux-gnu/libnss3.so" ]; then
+            echo "Setting up required Chromium shared libraries locally in $PLAYWRIGHT_LIB_DIR..."
+            mkdir -p "$PLAYWRIGHT_LIB_DIR"
+            TMP_DEB_DIR=$(mktemp -d)
+            (
+                cd "$TMP_DEB_DIR"
+                apt download libnspr4 libnss3 libasound2 2>/dev/null || true
+                for deb in *.deb; do
+                    [ -f "$deb" ] && dpkg -x "$deb" "$PLAYWRIGHT_LIB_DIR/"
+                done
+            )
+            rm -rf "$TMP_DEB_DIR"
+        fi
+    fi
+fi
+
+# ----------------------------------------------------------------------
+# 6. Terraform の初期化
+# ----------------------------------------------------------------------
+echo "☁️ Initializing terraform..."
+cd "$PROJECT_ROOT/backend/infra"
+terraform init
+
+echo ""
+echo "✅ All environment setup complete!"

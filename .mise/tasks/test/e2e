@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# mise description="Run frontend End-to-End tests (Playwright)"
+#USAGE arg "[args]..." help="Options to pass to Playwright"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+cd "$PROJECT_ROOT/frontend"
+echo "🎭 Running frontend E2E tests (Playwright)..."
+npx playwright test "$@"

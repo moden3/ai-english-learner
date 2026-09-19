@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# mise description="Run all tests (backend coverage & frontend component tests)"
+# mise description="Run all tests (backend coverage, frontend component & E2E tests)"
 set -euo pipefail
 
 mise run test:back
 echo ""
 mise run test:front
 echo ""
-echo "🎉 All backend and frontend tests passed successfully!"
+mise run test:e2e
+echo ""
+echo "🎉 All backend, frontend, and E2E tests passed successfully!"
