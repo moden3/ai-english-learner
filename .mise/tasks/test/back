@@ -4,6 +4,8 @@ set -euo pipefail
 
 cd backend
 echo "🧪 Running backend tests with code coverage..."
+# Clear local/CI override env vars during unit tests so SSM mock fallback tests run deterministically
+unset APP_API_KEY GEMINI_API_KEY TAVILY_API_KEY
 cargo llvm-cov --workspace "$@"
 cargo llvm-cov report --html
 echo "📄 HTML coverage report generated at: backend/target/llvm-cov/html/index.html"

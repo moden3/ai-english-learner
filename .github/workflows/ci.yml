@@ -16,7 +16,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION || 'ap-northeast-1' }}
       VITE_API_URL: ${{ secrets.VITE_API_URL }}
-      APP_API_KEY: ${{ secrets.APP_API_KEY }}
 
     steps:
       - name: Checkout repository

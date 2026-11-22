@@ -10,73 +10,64 @@ pub struct TavilyResult {
 }
 
 pub async fn get_api_key(ssm_client: &SsmClient) -> String {
-    // 1. 環境変数 (ローカル開発用)
-    if let Ok(val) = std::env::var("APP_API_KEY") {
+    // 1. 環境変数 (ローカル開発用。空文字の場合は未設定とみなす)
+    if let Ok(val) = std::env::var("APP_API_KEY")
+        && !val.is_empty()
+    {
         return val;
     }
 
     // 2. AWS SSM Parameter Store
-    let ssm_res = ssm_client
-        .get_parameter()
-        .name("/eng-app/api-key")
-        .with_decryption(true)
-        .send()
-        .await;
-
-    match ssm_res {
-        Ok(out) => out.parameter.unwrap().value.unwrap(),
-        Err(e) => {
-            println!("SSM error (could not read API Key): {:?}", e);
-            "CHANGE_ME_INITIAL_VALUE".to_string()
-        }
-    }
+    fetch_ssm_parameter(ssm_client, "/eng-app/api-key", "CHANGE_ME_INITIAL_VALUE").await
 }
 
 /// Gemini API キーを取得する（ローカル開発用環境変数 → AWS SSM の順で探す）
 pub async fn get_gemini_api_key(ssm_client: &SsmClient) -> String {
-    // 1. 環境変数 (ローカル開発用)
-    if let Ok(val) = std::env::var("GEMINI_API_KEY") {
+    // 1. 環境変数 (ローカル開発用。空文字の場合は未設定とみなす)
+    if let Ok(val) = std::env::var("GEMINI_API_KEY")
+        && !val.is_empty()
+    {
         return val;
     }
 
     // 2. AWS SSM Parameter Store
-    let ssm_res = ssm_client
-        .get_parameter()
-        .name("/eng-app/gemini-api-key")
-        .with_decryption(true)
-        .send()
-        .await;
-
-    match ssm_res {
-        Ok(out) => out.parameter.unwrap().value.unwrap(),
-        Err(e) => {
-            println!("SSM error (could not read Gemini API Key): {:?}", e);
-            String::new()
-        }
-    }
+    fetch_ssm_parameter(ssm_client, "/eng-app/gemini-api-key", "").await
 }
 
 /// Tavily API キーを取得する（ローカル開発用環境変数 → AWS SSM の順で探す）
 pub async fn get_tavily_api_key(ssm_client: &SsmClient) -> String {
-    // 1. 環境変数 (ローカル開発用)
-    if let Ok(val) = std::env::var("TAVILY_API_KEY") {
+    // 1. 環境変数 (ローカル開発用。空文字の場合は未設定とみなす)
+    if let Ok(val) = std::env::var("TAVILY_API_KEY")
+        && !val.is_empty()
+    {
         return val;
     }
 
     // 2. AWS SSM Parameter Store
+    fetch_ssm_parameter(ssm_client, "/eng-app/tavily-api-key", "").await
+}
+
+/// AWS SSM Parameter Store から指定したパラメータを取得する（失敗時は default_val にフォールバック）
+pub async fn fetch_ssm_parameter(
+    ssm_client: &SsmClient,
+    param_name: &str,
+    default_val: &str,
+) -> String {
     let ssm_res = ssm_client
         .get_parameter()
-        .name("/eng-app/tavily-api-key")
+        .name(param_name)
         .with_decryption(true)
         .send()
         .await;
 
     match ssm_res {
-        Ok(out) => out.parameter.unwrap().value.unwrap(),
+        Ok(out) => out
+            .parameter
+            .and_then(|p| p.value)
+            .unwrap_or_else(|| default_val.to_string()),
         Err(e) => {
-            println!("SSM error (could not read Tavily API Key): {:?}", e);
-            // キーがなくても検索なしモードでフォールバックするため空文字を返す
-            String::new()
+            println!("SSM error (could not read {}): {:?}", param_name, e);
+            default_val.to_string()
         }
     }
 }
@@ -227,6 +218,10 @@ mod tests {
             .await;
 
         let ssm_client = create_mock_ssm_client(&mock_server);
+        assert_eq!(
+            fetch_ssm_parameter(&ssm_client, "/eng-app/api-key", "CHANGE_ME_INITIAL_VALUE").await,
+            "ssm-secret-value"
+        );
         assert_eq!(get_api_key(&ssm_client).await, "ssm-secret-value");
         assert_eq!(get_gemini_api_key(&ssm_client).await, "ssm-secret-value");
         assert_eq!(get_tavily_api_key(&ssm_client).await, "ssm-secret-value");
@@ -240,11 +235,18 @@ mod tests {
             .await;
         let err_ssm_client = create_mock_ssm_client(&err_server);
         assert_eq!(
-            get_api_key(&err_ssm_client).await,
+            fetch_ssm_parameter(
+                &err_ssm_client,
+                "/eng-app/api-key",
+                "CHANGE_ME_INITIAL_VALUE"
+            )
+            .await,
             "CHANGE_ME_INITIAL_VALUE"
         );
-        assert_eq!(get_gemini_api_key(&err_ssm_client).await, "");
-        assert_eq!(get_tavily_api_key(&err_ssm_client).await, "");
+        assert_eq!(
+            fetch_ssm_parameter(&err_ssm_client, "/eng-app/gemini-api-key", "").await,
+            ""
+        );
     }
 
     #[test]
