@@ -132,18 +132,23 @@ APIキーをコードに直書き（`.env`含む）するのを避けるため�
   1. ログイン画面でユーザーがAPIキーを入力。
   2. ブラウザの `sessionStorage` に保存。
   3. 通信のたびに `x-api-key` ヘッダーへ付与してリクエスト。
-- **UX向上（ログインスキップ）**:
-  - SPAの利便性を高めるため、リロード時にキーが存在すればログイン画面をスキップする処理（下記コード）を入れている。
+- **UX向上（ログインスキップと React 19 / ESLint ルールへの適合）**:
+  - SPAの利便性を高めるため、リロード時に `sessionStorage` にキーが存在すればログイン画面をスキップする処理を入れている。
+  - **【ノウハウ】`useEffect` 内での同期 `setState` を避ける（Lazy Initial State）**:
+    最新の `eslint-plugin-react-hooks`（v7+）では、`useEffect` の直下で同期的に `setIsAuthenticated(true)` を呼ぶと、不要な再レンダリング（カスケードレンダー）を引き起こすアンチパターン（`react-hooks/set-state-in-effect`）としてエラーになります。
+    そのため、`useState` の初期値に関数（Lazy Initializer）を渡して初回マウント時に一度だけ `sessionStorage` を読み取るのが React のベストプラクティスです。
 
 ```tsx
-// ログインスキップの実装例 (App.tsx)
-useEffect(() => {
-  const savedKey = sessionStorage.getItem('api_key');
-  if (savedKey) {
-    setIsAuthenticated(true); // キーが存在すれば即座にダッシュボードを表示
-  }
-}, []);
+// 推奨パターン: useState の遅延初期化 (App.tsx)
+const [isAuthenticated, setIsAuthenticated] = useState(() =>
+  Boolean(sessionStorage.getItem('api_key'))
+);
 ```
+
+- **【ノウハウ】フォームの選択状態（`selectedTopic`）と生成結果の表示状態（`generatedTopic`）の分離**:
+  - `TextGenerator.tsx` のトピック選択ドロップダウンには「Random (Auto-select)」（`value=""`）がある。
+  - もしランダムで選ばれたトピック名でドロップダウンの選択値（`selectedTopic`）自体を上書きしてしまうと、2回目に Generate ボタンを押したときにランダムにならず前回のトピックで固定されてしまう。
+  - そのため、「ユーザーがドロップダウンで選んでいる値（`selectedTopic`）」と「実際に生成された記事のトピック名（`generatedTopic`）」を別々の `useState` として分離することで、何度押してもランダム選択が機能する直感的な UI ステート設計を実現している。
 
 ### バックエンド側の工夫 (AWS SSM Parameter Store)
 
@@ -245,3 +250,15 @@ Playwright では、ヘッドレスでのCI実行だけでなく、開発者が�
   実際の Chromium ウィンドウが開き、自動入力・クリックの様子を肉眼で確認。`--workers=1` を指定することで1つずつじっくり観察可能。
 - **ステップ実行デバッグ (`--debug`)**:
   Playwright Inspector が起動し、1行ずつ「Step Over」しながら要素のセレクターや挙動を検証。
+
+---
+
+### 5. フロントエンドにおけるコードカバレッジ計測のベストプラクティス (`@vitest/coverage-v8`)
+
+Web開発において、「単体・コンポーネントテスト（Vitest）」と「E2Eテスト（Playwright）」のどちらでコードカバレッジを計測すべきかには明確な指針があります。
+
+- **Vitest (`mise run test:front`) でカバレッジを計測するのが標準**:
+  - V8 エンジン組み込みのカバレッジ機能（`@vitest/coverage-v8`）を使うことで、トランスパイルのオーバーヘッドなしに数秒で **Statements / Branch（分岐カバレッジ） / Functions / Lines** の4指標と HTML レポート（`frontend/coverage/index.html`）を出力できます。
+  - 細かい `if / else` 分岐やエラーハンドリングの網羅率は、高速に回る単体・コンポーネントテストで担保します（現在ブランチカバレッジ **87.7%**、行カバレッジ **87.0%**）。
+- **Playwright (`mise run test:e2e`) ではカバレッジを計測しないのが一般的**:
+  - E2Eテストの目的は「主要なユーザージャーニー（ログイン→生成→解析→単語保存）が実ブラウザ上で結合して動くこと」の保証であり、細かい条件分岐をE2Eで網羅しようとするとテスト実行時間が肥大化し保守性が損なわれるためです。

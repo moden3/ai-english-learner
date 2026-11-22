@@ -2,14 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   ci:
     name: Quality, Test & Build (mise run ci)
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION || 'ap-northeast-1' }}
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      APP_API_KEY: ${{ secrets.APP_API_KEY }}
 
     steps:
       - name: Checkout repository

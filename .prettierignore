@@ -5,6 +5,7 @@ target/
 .terraform/
 playwright-report/
 test-results/
+coverage/
 package-lock.json
 Cargo.lock
 *.zip

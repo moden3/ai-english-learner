@@ -44,7 +44,7 @@ graph TD
 
 ```
 ai-english-learner/          # プロジェクトルート
-├── .github/workflows/       # GitHub Actions CI パイプライン定義 (ci.yml)
+├── .github/workflows/       # GitHub Actions ワークフロー定義 (ci.yml, deploy.yml)
 ├── .githooks/               # Git フック定義 (pre-commit)
 ├── .mise/tasks/             # タスクランナー定義
 │   ├── build/               # ビルド用 (back, front, all)
@@ -75,7 +75,7 @@ ai-english-learner/          # プロジェクトルート
 
 ## 4. テストアーキテクチャ（3層モック分離）
 
-本システムは、CI環境や手元開発で外部APIトークンを一切消費せず、安全・高速に実行可能な3層の自動テストアーキテクチャ（計69テスト）を採用しています。
+本システムは、CI環境や手元開発で外部APIトークンを一切消費せず、安全・高速に実行可能な3層の自動テストアーキテクチャ（計90テスト）を採用しています。
 
 ```mermaid
 graph TD
@@ -83,14 +83,14 @@ graph TD
 
     subgraph BackendTest ["1. バックエンド テスト (cargo-llvm-cov)"]
         Handlers["Lambda Handlers<br/>(generate_text, topics, vocab)"]
-        PureFuncs["Pure Functions<br/>(lib.rs: プロンプト/JSON)"]
-        WireMock["wiremock::MockServer<br/>(ローカルHTTPモック)"]
+        PureFuncs["Pure Functions<br/>(lib.rs: プロンプト/JSON/SSM)"]
+        WireMock["wiremock::MockServer<br/>(ローカルHTTPモック: AI & AWS SDK)"]
 
         Handlers --> PureFuncs
         Handlers <-->|注入されたモックURL| WireMock
     end
 
-    subgraph FrontendTest ["2. フロントエンド単体テスト (Vitest + RTL)"]
+    subgraph FrontendTest ["2. フロントエンド単体テスト (Vitest + v8 Coverage)"]
         Components["UI Components<br/>(Login, TextGen, etc.)"]
         MockFetch["vi.spyOn(fetch)<br/>インメモリAPIモック"]
         Components <--> MockFetch
@@ -107,6 +107,6 @@ graph TD
     Mise --> E2ETest
 ```
 
-- **バックエンド (23件)**: `wiremock` によりローカルで HTTP モックサーバーを立ち上げ、`ApiEndpoints` を注入することで Tavily や Gemini との通信を完全シミュレート。`cargo-llvm-cov` で行カバレッジとHTMLレポートを出力。
-- **フロントエンド単体・コンポーネント (40件)**: `Vitest` 上でブラウザの `fetch` を直接モック化。API Gateway やバックエンドを起動せずにコンポーネントの状態遷移を数秒で検証。
+- **バックエンド (44件 / 行カバレッジ 91.3%・領域カバレッジ 92.1%)**: `wiremock` によりローカルで HTTP モックサーバーを立ち上げ、外部 AI API（`ApiEndpoints`）だけでなく AWS SDK（`DynamoDB` / `SSM` の `endpoint_url`）も注入することで、トレイト等による複雑な抽象化を導入せずに全ハンドラの正常系・異常系を完全シミュレート。`cargo-llvm-cov` でカバレッジとHTMLレポートを出力。
+- **フロントエンド単体・コンポーネント (40件 / 行カバレッジ 87.0%・分岐カバレッジ 87.7%)**: `Vitest` 上でブラウザの `fetch` を直接モック化。API Gateway やバックエンドを起動せずにコンポーネントの状態遷移を数秒で検証し、`@vitest/coverage-v8` でブランチカバレッジとHTMLレポートを出力。
 - **フロントエンド E2E (6件)**: `Playwright` により実ブラウザでログインから記事生成、スラッシュリーディング表示、単語帳登録までの実操作シナリオを検証。`page.route` によるネットワーク完全遮断でトークン消費ゼロを保証。

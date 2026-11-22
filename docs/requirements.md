@@ -1,8 +1,8 @@
 # システム要件定義書
 
-> **ステータス**: v1.4 確定版
-> **更新日**: 2026-09-19
-> **変更点**: 検索エンジン（Tavily AI Search API）の統合、最新ニュース参照ON/OFF機能、AIモデルの一本化（gemini-3.5-flash-lite）、記事語数の最適化（150〜250語）、全レイヤー自動テスト（Vitest & Playwright E2E & cargo-llvm-cov）および一括環境構築（`mise run setup`）の導入
+> **ステータス**: v1.5 確定版
+> **更新日**: 2026-11-23
+> **変更点**: 検索エンジン（Tavily AI Search API）の統合、最新ニュース参照ON/OFF機能、AIモデルの一本化（gemini-3.5-flash-lite）、記事語数の最適化（150〜250語）、全レイヤー自動テスト（Vitest & Playwright E2E & cargo-llvm-cov 計90件）、一括環境構築（`mise run setup`）、コード・ドキュメント整形とGit pre-commitフック（`mise run fmt` / `pre-commit`）、およびGitHub ActionsとTerraform S3バックエンドによるCI/CD自動デプロイ基盤の導入
 
 ---
 
@@ -67,11 +67,14 @@
   - **ダミーモード**: ローカル開発時にトピック名（`test` / `dummy`）やAPIキー未設定時に外部API通信を遮断しダミーテキストを返却。
 - **セキュリティ保護**: 簡易APIキー認証により外部からの不正スパムリクエストを遮断し、AWS/Gemini/Tavilyの予期せぬ課金を防ぐ。
 
-### 3.3 テスト自動化・開発環境品質
+### 3.3 テスト自動化・開発環境品質・CI/CD
 
-- **外部通信ゼロ・トークン消費ゼロの自動テスト**:
-  - バックエンド（Rust）は `wiremock` によりローカルHTTPモックで検証。
-  - フロントエンド単体は `Vitest` により `jsdom` で高速検証。
-  - フロントエンドE2Eは `Playwright` により実ブラウザで `page.route` インターセプトによりバックエンド未起動・外部通信完全ゼロで実操作フローを検証。
-- **ワンコマンド環境構築 (`mise run setup`)**:
-  - 前提ツールを `mise` のみに集約し、Rust、Cargo Lambda、Playwright、Terraform、Node.js などの依存関係を一括で自動導入可能であること。
+- **外部通信ゼロ・トークン消費ゼロの自動テスト（計90件）**:
+  - バックエンド（Rust 44件）は `wiremock` により外部API（Tavily / Gemini）および AWS SDK（DynamoDB / SSM）をすべてローカルHTTPモックで検証し、`cargo-llvm-cov` で91%以上の行・領域カバレッジを維持。
+  - フロントエンド単体（Vitest 40件）は `jsdom` で高速検証し、`@vitest/coverage-v8` で行・ブランチカバレッジを出力。
+  - フロントエンドE2E（Playwright 6件）は実ブラウザで `page.route` インターセプトによりバックエンド未起動・外部通信完全ゼロで実操作フローを検証。
+- **ワンコマンド環境構築と品質ゲート (`mise`)**:
+  - 前提ツールを `mise` のみに集約し、`mise run setup` で全依存関係と Git フック（`.githooks/pre-commit`）を一括自動導入。
+  - `mise run fmt` で Rust・Terraform・Frontend・Markdown ドキュメントを一括整形し、`git commit` 時に自動で `mise run pre-commit`（シークレット漏洩防止・フォーマット・Clippy・Terraform検証・ESLint・型チェック）を実行。
+- **CI/CD 自動デプロイパイプライン (GitHub Actions + Terraform S3 Backend)**:
+  - Terraform の状態ファイル（`terraform.tfstate`）を AWS S3 でリモート同期し、GitHub Actions で `ci.yml`（`mise run ci`）が成功した直後に `deploy.yml`（`mise run deploy:all`）が自動実行される継続的デリバリー体制を構築。

@@ -5,8 +5,13 @@ terraform {
       version = "~> 5.0"
     }
   }
-  # 将来的にS3バックエンド等に変更する場合はここに追記
-  # backend "s3" {}
+  # S3バックエンドによるリモート状態（tfstate）の同期管理
+  # ローカル開発環境とGitHub Actionsの両方で同じAWSリソース状態を共有する
+  backend "s3" {
+    bucket = "eng-app-tfstate-538884318891"
+    key    = "eng-app/terraform.tfstate"
+    region = "ap-northeast-1"
+  }
 }
 
 provider "aws" {

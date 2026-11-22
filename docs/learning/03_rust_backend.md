@@ -179,24 +179,54 @@ async fn test_generate_with_web_search_success() {
 
 ---
 
-### 4. 外部AI（LLM）連携テスト特有の検証ポイント
+### 4. AWS SDK (DynamoDB / SSM) もトレイト不要で `wiremock` でテストする手法
 
-LLMを組み込んだバックエンドでは、従来のWeb APIテストにはない特有のテスト観点が存在します。
+Rust で DB（DynamoDB）やシークレット管理（SSM）を使うコードをテストする際、一般的には「Repository トレイトを定義し、本番用構造体とテスト用モック構造体を作り分ける」という手法がよく紹介されます。
+しかし、小〜中規模のプロジェクトや初心者にとって、**テストのためだけにトレイトやジェネリクスを増やすとコードの構造が複雑になり、可読性が下がる**というデメリットがあります。
 
-1. **出力の不確実性（Markdown装飾・前後ノイズ）の耐性**:
-   LLMはプロンプトの指示にもかかわらず、JSONの前後に解説文を付与したり、` ```json ` のコードブロックで囲んで返却することがあります。モックの `set_body_json` や文字列レスポンスで意図的に装飾混じりのJSONを返却し、パーサーが正しく抽出できるかをテストします。
-2. **外部障害時のフェイルファスト（500/503エラー）**:
-   外部の検索APIやLLMが過負荷でエラーを返した際、長時間ハングアップしたり不完全なデータを返したりせず、即座に適切なHTTPステータス（例: Tavily障害時は `503 Service Unavailable`）でクライアントに返せるかをモックで確実に再現・検証します。
+実は、**AWS SDK for Rust (`aws_sdk_dynamodb::Client`, `aws_sdk_ssm::Client`) の実体は、内部で JSON をやり取りする HTTP クライアント**です。
+したがって、外部 AI API とまったく同じように、**AWS SDK の `Config::builder().endpoint_url(mock_server.uri())` に `wiremock` のローカル URL を1行指定するだけ**で、本番の `function_handler` を1行も書き換えることなく、全エンドポイントの正常系・異常系をテストできます。
+
+```rust
+// テスト用のDynamoDBクライアント作成関数 (backend/src/bin/topics.rs)
+fn create_mock_client(mock_server: &MockServer) -> Arc<Client> {
+    let creds = Credentials::new("test", "test", None, None, "test");
+    let config = Config::builder()
+        .behavior_version_latest()
+        .region(Region::new("ap-northeast-1"))
+        .credentials_provider(creds)
+        .endpoint_url(mock_server.uri()) // ← 接続先をローカルの wiremock に向けるだけ！
+        .build();
+    Arc::new(Client::from_conf(config))
+}
+```
+
+この手法により、`topics.rs` と `vocabulary.rs` のコード構造をシンプルに保ったまま、GET（アイテム変換）・POST（UUID採番・201返却）・DELETE（URLパスからのID抽出・204返却）・認証エラー（401）・DB障害時（500）のすべてをテストし、**バックエンド全体で 91.36% の行カバレッジ**を達成しています。
 
 ---
 
-### 5. コードカバレッジ計測 (`cargo-llvm-cov`) による品質可視化
+### 5. 外部AI（LLM）連携・文字列処理特有の検証ポイントと落とし穴
 
-テストがソースコードのどの分岐をカバーできているかを客観的に把握するため、LLVMソースベースカバレッジツールを活用します。
+LLMやWeb検索を組み込んだRustバックエンドでは、特有のテスト観点や注意すべき落とし穴が存在します。
 
-- **行カバレッジ (Line Coverage)**: 実行された行の割合。
-- **分岐・領域カバレッジ (Region Coverage)**: `if / match` 等の分岐条件網羅率。
-  テスト実行時にターミナルサマリーと同時にHTMLレポート（`target/llvm-cov/html/index.html`）を生成し、未テストのエラーハンドリング分岐（例: 異常系ステータス時の処理）を視覚的に特定・補強します。
+1. **出力の不確実性（Markdown装飾・前後ノイズ）の耐性**:
+   LLMはプロンプトの指示にもかかわらず、JSONの前後に解説文を付与したり、` ```json ` のコードブロックで囲んで返却することがあります。モックの `set_body_json` や文字列レスポンスで意図的に装飾混じりのJSONを返却し、パーサー（`extract_json_payload`）が正しく抽出できるかをテストします。
+2. **外部障害時のフェイルファスト（500/503エラー）**:
+   外部の検索APIやLLMが過負荷でエラーを返した際、長時間ハングアップしたり不完全なデータを返したりせず、即座に適切なHTTPステータス（例: Tavily障害時は `503 Service Unavailable`）でクライアントに返せるかをモックで確実に再現・検証します。
+3. **Rustにおける UTF-8 マルチバイト文字スライスのパニック防止**:
+   ニュース記事の本文を400文字に切り詰める際、`&content[..400]` のようにバイトインデックスでスライスすると、英語記事内に頻出するスマートクォート（`’`）やエムダッシュ（`—`）、通貨記号（`€`）などのマルチバイト文字の途中に400バイト目が当たった瞬間に **Rust が `byte index 400 is not a char boundary` でパニック（クラッシュ）** します。
+   これを防ぐため、必ず文字（Unicode Scalar Value）単位のイテレータ `content.chars().take(400).collect()` を使用し、マルチバイト文字を含むテストケース（`test_format_news_context_multibyte_utf8_does_not_panic`）で安全性を担保しています。
+
+---
+
+### 6. コードカバレッジ計測 (`cargo-llvm-cov`) による品質可視化と指標の見方
+
+テストがソースコードのどの分岐をカバーできているかを客観的に把握するため、LLVMソースベースカバレッジツール（`cargo-llvm-cov`）を活用しています。
+
+- **行カバレッジ (Lines Coverage: 91.36%)**: 実行された行の割合。
+- **領域カバレッジ (Regions Coverage: 92.17%)**: `if / else` の各ブロックや `match` の各アーム、論理演算子（`&&`, `||`）の短絡評価など、**コード内の分岐領域がどれだけ網羅されたか**を示す指標。
+  - ※ Rust の `--branch` オプション（C++等と同等の真偽分岐カバレッジ）は Nightly コンパイラの実験的機能（unstable）が必要となるため、**Stable Rust 開発ではこの `Regions` カバレッジを実質的な分岐網羅率の指標として用いるのが標準プラクティス**です。
+  - テスト実行時にターミナルサマリーと同時にHTMLレポート（`backend/target/llvm-cov/html/index.html`）を生成し、未テストのエラーハンドリング分岐を視覚的に特定・補強できます。
 
 ## RustバイナリのZIPデプロイ方式
 

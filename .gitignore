@@ -38,6 +38,7 @@ terraform.rc
 /frontend/*.local
 /frontend/test-results/
 /frontend/playwright-report/
+/frontend/coverage/
 .env
 .env.*
 !.env.example

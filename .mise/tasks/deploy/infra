@@ -9,6 +9,7 @@ mise run build:back
 
 echo "☁️ Applying Terraform..."
 cd "$PROJECT_ROOT/backend/infra"
+terraform init
 terraform apply -auto-approve
 
 echo "✅ Infrastructure deployment complete!"

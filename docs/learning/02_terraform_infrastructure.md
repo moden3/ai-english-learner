@@ -234,3 +234,74 @@ resource "aws_ssm_parameter" "tavily_api_key" {
 
 - **`ignore_changes = [value]` の効果**:
   初期構築時はダミー値（`CHANGE_ME_...`）でリソースを作成するが、その後AWSコンソール等から手動で「本物のAPIキー」に変更する。この設定を入れることで、次回 `terraform apply` を実行した際にも **TerraformがAWS上の本物のキーをダミー値で上書き（破壊）してしまうのを防ぐ** ことができる。セキュリティとIaCを両立させる必須のテクニック。
+
+---
+
+## トピック6: Terraform リモートステート管理 (S3 Backend) と CI/CD 同期
+
+### なぜ `terraform.tfstate` を S3 で管理するのか？
+
+Terraform は「現在 AWS 上にどのリソースがどの ID で存在しているか」を `terraform.tfstate` という JSON ファイルに記録します。
+
+- **ローカル管理の限界**: 初期はローカルの `backend/infra/terraform.tfstate` に保存していましたが、このファイルにはリソースの詳細が含まれるため `.gitignore` で Git 管理外にします。すると、**GitHub Actions（毎回まっさらな仮想マシンが起動して消える環境）からデプロイしようとした際、`terraform.tfstate` が存在せず、「まだ何も作られていない」と誤認して既存リソースとの重複作成エラー（`ResourceAlreadyExists`）が発生**してしまいます。
+- **S3 リモートバックエンドによる解決**: `terraform.tfstate` の保存場所を AWS S3 バケット（パブリックアクセス完全ブロック＋バージョニング有効）に設定することで、`terraform init` / `terraform apply` 実行時に**自動的に S3 から最新の状態を取得し、変更後に S3 へ書き戻す**ようになります。
+
+### 実装コード (`backend/infra/main.tf`)
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  # S3バックエンドによるリモート状態（tfstate）の同期管理
+  backend "s3" {
+    bucket = "eng-app-tfstate-538884318891"
+    key    = "eng-app/terraform.tfstate"
+    region = "ap-northeast-1"
+  }
+}
+```
+
+- **ローカルから S3 への移行コマンド**:
+  既存のローカル `terraform.tfstate` がある状態で上記ブロックを追記し、`terraform init -migrate-state` を1回実行するだけで、既存リソースを一切作り直すことなく S3 へ状態ファイルを無停止移行できます。
+- **AWS 認証情報がない環境での構文検証 (`-backend=false`)**:
+  フォークからの Pull Request など AWS 認証情報を持たない環境で `terraform validate`（構文チェック）だけを走らせたい場合は、`terraform init -backend=false` を実行することで S3 に接続せずにプロバイダプラグインの初期化と構文検証が可能です（`.mise/tasks/setup` に自動判定として実装済み）。
+
+---
+
+## トピック7: コスト防衛と不正課金防止のインフラ設計（スロットリング & ログ保持期間）
+
+個人開発で「完全月額 \$0」と安全性を守るため、機能リソースだけでなく以下の2つの防衛設定を Terraform に組み込んでいます。
+
+### 1. API Gateway のスロットリング（レートリミット） (`backend/infra/api_gateway.tf`)
+
+万一 API キーが漏洩したりスクリプトによる大量リクエストを受けた場合でも、Lambda や外部 AI API（Gemini / Tavily）が無限に呼び出されるのを防ぐため、`aws_apigatewayv2_stage` にレートリミットを設定しています。
+
+```hcl
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.main.id
+  name        = "$default"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 10 # 瞬間的な同時リクエスト上限
+    throttling_rate_limit  = 5  # 1秒あたりの平均リクエスト上限 (RPS)
+  }
+}
+```
+
+### 2. CloudWatch Logs の保持期間制限 (`backend/infra/lambda.tf`)
+
+Lambda 関数は実行時に自動で CloudWatch Logs にロググループ（`/aws/lambda/<関数名>`）を作成しますが、**デフォルトでは保持期間が「無期限（Never expire）」** になり、数年単位でログが溜まり続けるとストレージ課金の原因になります。
+Terraform で明示的にロググループを定義し、`retention_in_days = 14`（2週間で自動削除）を設定することで長期運用でも無料枠内に収めています。
+
+```hcl
+resource "aws_cloudwatch_log_group" "generate_text" {
+  name              = "/aws/lambda/${aws_lambda_function.generate_text.function_name}"
+  retention_in_days = 14
+}
+```

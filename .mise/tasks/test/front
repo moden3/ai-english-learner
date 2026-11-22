@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Run frontend component and unit tests (Vitest)"
+#MISE description="Run frontend component and unit tests with coverage (Vitest)"
 set -euo pipefail
 
 cd frontend
-echo "⚛️  Running frontend component tests..."
+echo "⚛️  Running frontend component tests with code coverage..."
 npm run test "$@"
+echo "📄 HTML coverage report generated at: frontend/coverage/index.html"

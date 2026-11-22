@@ -90,7 +90,12 @@ fi
 # ----------------------------------------------------------------------
 echo "☁️ Initializing terraform..."
 cd "$PROJECT_ROOT/backend/infra"
-terraform init
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -f "$HOME/.aws/credentials" ]; then
+    terraform init
+else
+    echo "ℹ️ AWS credentials not detected; running terraform init -backend=false for local/CI validation..."
+    terraform init -backend=false
+fi
 
 # ----------------------------------------------------------------------
 # 7. Git Hooks (pre-commit) の有効化

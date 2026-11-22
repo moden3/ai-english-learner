@@ -107,9 +107,9 @@ sequenceDiagram
     APIGW->>Lam: APIキー検証 & プロキシ
     Lam->>DB: 単語データの保存 (PutItem)
     DB-->>Lam: 保存完了
-    Lam-->>APIGW:
-    APIGW-->>SPA: 200 OK
-    SPA-->>U: 保存完了の通知 (Toast等を表示)
+    Lam-->>APIGW: 201 Created
+    APIGW-->>SPA: 201 Created (保存された単語JSON)
+    SPA-->>U: 保存完了の通知 (alertを表示)
 ```
 
 ---
@@ -188,17 +188,18 @@ APIの設計仕様（リクエスト・レスポンス・パス）について�
 
 ### 7.1 バックエンド・テスト設計 (`backend/src`)
 
-- **依存性注入 (Dependency Injection)**:
-  `generate_text` ハンドラは外部APIのエンドポイントURLを保持する `ApiEndpoints` 構造体を受け取ります。本番環境ではデフォルト値（公式URL）を使用し、テスト環境ではローカルの `wiremock::MockServer` のURLを注入します。
+- **エンドポイントURL注入 (Dependency Injection)**:
+  - `generate_text` ハンドラは外部APIのエンドポイントURLを保持する `ApiEndpoints` 構造体を受け取り、テスト時はローカルの `wiremock::MockServer` のURLを注入します。
+  - `topics` / `vocabulary` / `lib` の AWS SDK クライアント（`aws_sdk_dynamodb::Client`, `aws_sdk_ssm::Client`）についても、複雑なリポジトリトレイトを導入する代わりに SDK 標準の `Config::builder().endpoint_url(mock_server.uri())` を用いて通信先のみを `wiremock` に向けることで、本番と同一のコードパスで全44件のテストを実行しています。
 - **純粋関数の抽出 (`lib.rs`)**:
-  プロンプト生成（`build_generate_prompt`, `build_analyze_prompt`）や、Markdownブロック除去・JSON抽出（`extract_json_payload`）、認証検証（`validate_api_key`）などのロジックを副作用のない純粋関数として切り出し、単体テストを網羅。
+  プロンプト生成（`build_generate_prompt`, `build_analyze_prompt`）や、UTF-8文字境界を安全に考慮したニュース切り詰め（`format_news_context`）、Markdownブロック除去・JSON抽出（`extract_json_payload`）、認証検証（`validate_api_key`）などのロジックを副作用のない純粋関数として切り出し、単体テストを網羅。
 - **カバレッジ測定**:
-  `cargo-llvm-cov` を用いて、テスト実行と同時にターミナルサマリーおよびHTMLレポート（`backend/target/llvm-cov/html/index.html`）を生成。
+  `cargo-llvm-cov` を用いて、テスト実行と同時にターミナルサマリー（行カバレッジ 91.36%、領域カバレッジ 92.17%）およびHTMLレポート（`backend/target/llvm-cov/html/index.html`）を生成。
 
 ### 7.2 フロントエンド・単体/コンポーネントテスト設計 (`frontend/src`)
 
-- **Vitest + React Testing Library**:
-  ブラウザ起動のオーバーヘッドを排し、`jsdom` 環境で React 19 コンポーネントの状態変化、非同期ローディング、バリデーションを高速（約5秒）に検証（全40件）。
+- **Vitest + React Testing Library + V8 Coverage**:
+  ブラウザ起動のオーバーヘッドを排し、`jsdom` 環境で React 19 コンポーネントの状態変化、非同期ローディング、バリデーションを高速に検証（全40件）。`@vitest/coverage-v8` により、行カバレッジ（87.09%）だけでなくブランチカバレッジ（87.70%）およびHTMLレポート（`frontend/coverage/index.html`）を自動出力します。
 - **ネットワーク通信の完全モック**:
   `api.ts` の `fetch` 処理はテスト内でモック化され、実際のAPI Gatewayやバックエンドとの通信を行いません。401認証切れ時の自動セッション破棄や、503障害時のエラーメッセージ表示などのエッジケースを自在にシミュレート可能。
 
@@ -214,8 +215,8 @@ APIの設計仕様（リクエスト・レスポンス・パス）について�
 ### 7.4 テスト実行コマンド (Mise)
 
 ```bash
-mise run test:all    # バックエンド ＋ フロントエンド（単体 ＋ E2E）一括実行 (計69件 PASS)
-mise run test:back   # バックエンド（Rust）カバレッジテストのみ (23件)
-mise run test:front  # フロントエンド（Vitest）単体・コンポーネントテストのみ (40件)
+mise run test:all    # バックエンド ＋ フロントエンド（単体 ＋ E2E）一括実行 (計90件 PASS)
+mise run test:back   # バックエンド（Rust）カバレッジテストのみ (44件)
+mise run test:front  # フロントエンド（Vitest）単体・コンポーネント＆カバレッジテストのみ (40件)
 mise run test:e2e    # フロントエンド（Playwright）実ブラウザE2Eテストのみ (6件)
 ```

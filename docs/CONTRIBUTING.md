@@ -110,7 +110,7 @@ APP_API_KEY=your-local-api-key
 
 本プロジェクトでは、外部ネットワーク通信を行わず安全かつ高速にバックエンド（Rust）、フロントエンド単体・コンポーネント（Vitest）、および実ブラウザによるE2E（Playwright）の全テストを一括実行できる。
 
-バックエンド側では **ターミナルへのカバレッジサマリー出力** と **HTMLカバレッジレポートの自動生成** が行われる。
+バックエンド側およびフロントエンド（Vitest）側では **ターミナルへのカバレッジサマリー出力（行・ブランチ/領域カバレッジ）** と **HTMLカバレッジレポートの自動生成** が行われる。
 E2Eテストでは、Playwright のネットワークインターセプトにより外部API（Gemini / Tavily）のトークン消費ゼロ・バックエンド未起動でも実ブラウザ操作を完全自動検証する。
 
 ```bash
@@ -119,15 +119,19 @@ mise run test:all
 
 # 個別実行したい場合
 mise run test:back    # バックエンド（Rust）カバレッジテストのみ
-mise run test:front   # フロントエンド（Vitest）単体・コンポーネントテストのみ
+mise run test:front   # フロントエンド（Vitest）単体・コンポーネント＆カバレッジテストのみ
 mise run test:e2e     # フロントエンド（Playwright）E2Eテストのみ
 ```
 
-> **バックエンド HTMLカバレッジレポートのブラウザ閲覧**
-> 生成されたレポート（行ごとの網羅状況・カラーハイライト）は以下で直接開くことができる：
+> **HTMLカバレッジレポートのブラウザ閲覧**
+> 生成されたレポート（行・分岐ごとの網羅状況・カラーハイライト）は以下で直接開くことができる：
 >
 > ```bash
+> # バックエンド (Rust)
 > xdg-open backend/target/llvm-cov/html/index.html
+>
+> # フロントエンド (React / TypeScript)
+> xdg-open frontend/coverage/index.html
 > ```
 
 > **フロントエンドのウォッチモード起動**
@@ -196,10 +200,33 @@ mise run ci
 
 ---
 
-## 5. 本番環境 (AWS) へのデプロイ
+## 5. 本番環境 (AWS) へのデプロイ (ローカル & GitHub Actions)
 
 動作確認が完了したら、実際にAWS環境へデプロイする。
-本プロジェクトでは、インフラの適用（Terraform）とフロントエンドのビルド＆デプロイを以下のコマンド一発で全自動実行できる。
+本プロジェクトでは、Terraform の状態ファイル（`terraform.tfstate`）を AWS S3 バックエンド（`s3://eng-app-tfstate-538884318891/eng-app/terraform.tfstate`）で一元管理・自動同期しているため、**GitHub の `main` ブランチ更新時の自動デプロイ**と**ローカルからの手動デプロイ**の両方に完全対応している。
+
+### 5.1 GitHub Actions による CI / 自動デプロイ (`.github/workflows/ci.yml` & `deploy.yml`)
+
+- **CI ワークフロー ([.github/workflows/ci.yml](../../.github/workflows/ci.yml))**:
+  - Pull Request 時および `main` ブランチへの Push 時に実行される。
+  - `mise run setup` → `mise run ci`（フォーマット・Lint・全自動テスト・本番ビルド検証）を自動実行。
+- **Deploy ワークフロー ([.github/workflows/deploy.yml](../../.github/workflows/deploy.yml))**:
+  - `main` ブランチで `CI` ワークフローが**成功（success）した直後**に自動で起動する（または GitHub Actions 画面から手動実行 `workflow_dispatch` も可能）。
+  - `mise run deploy:all` を実行し、AWS（Lambda, API Gateway, DynamoDB, S3, CloudFront）へ本番反映する。
+
+> **GitHub リポジトリに設定する Secrets / Variables (`Settings > Secrets and variables > Actions`)**
+>
+> - **Secrets**:
+>   - `AWS_ACCESS_KEY_ID`: AWS アクセスキー
+>   - `AWS_SECRET_ACCESS_KEY`: AWS シークレットキー
+>   - `VITE_API_URL`: API Gateway のエンドポイントURL（例: `https://0h1c2w4a4e.execute-api.ap-northeast-1.amazonaws.com`）
+>   - `APP_API_KEY`: (任意) アプリケーション認証キー
+> - **Variables**:
+>   - `AWS_DEFAULT_REGION`: `ap-northeast-1`（未設定時もデフォルトで `ap-northeast-1`）
+
+### 5.2 ローカルから手動デプロイする場合
+
+インフラの適用（Terraform）とフロントエンドのビルド＆デプロイを以下のコマンド一発で全自動実行できる。
 
 ```bash
 # ※デプロイ前に frontend/.env の VITE_API_URL が api_gateway_url になっているか確認
