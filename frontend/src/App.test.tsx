@@ -15,7 +15,9 @@ describe('App Component (Routing & Auth Integration)', () => {
   it('renders Login screen when unauthenticated', () => {
     render(<App />);
 
-    expect(screen.getByText('Please enter your API Key to access the application.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Please enter your API Key to access the application.')
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText('API Key')).toBeInTheDocument();
     expect(screen.queryByText('English Generator')).not.toBeInTheDocument();
   });
@@ -92,6 +94,8 @@ describe('App Component (Routing & Auth Integration)', () => {
     await user.click(logoutButton);
 
     expect(sessionStorage.getItem('api_key')).toBeNull();
-    expect(screen.getByText('Please enter your API Key to access the application.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Please enter your API Key to access the application.')
+    ).toBeInTheDocument();
   });
 });

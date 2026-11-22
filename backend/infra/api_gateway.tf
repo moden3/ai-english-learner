@@ -2,7 +2,7 @@
 resource "aws_apigatewayv2_api" "main" {
   name          = "eng-app-api"
   protocol_type = "HTTP"
-  
+
   cors_configuration {
     allow_origins = [
       "http://localhost:5173",
@@ -13,11 +13,16 @@ resource "aws_apigatewayv2_api" "main" {
   }
 }
 
-# デフォルトステージ（自動デプロイを有効化）
+# デフォルトステージ（自動デプロイ・レートリミットを有効化）
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 10
+    throttling_rate_limit  = 5
+  }
 }
 
 # ========== Integrations (Lambdaとの接続) ==========

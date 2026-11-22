@@ -22,13 +22,13 @@ AI（Google Gemini 3.5 Flash-lite）および検索特化エンジン（Tavily A
 
 ## 🛠 技術スタック
 
-| 領域 | 技術 |
-|---|---|
-| **フロントエンド** | React, TypeScript, Vite, Vanilla CSS |
-| **バックエンド** | Rust, cargo-lambda, tokio |
-| **AWS インフラ** | Terraform, Lambda, API Gateway, DynamoDB, S3, CloudFront, SSM |
-| **AI (LLM)** | Google Gemini API (`gemini-3.5-flash-lite`) |
-| **Web検索** | Tavily AI Search API |
+| 領域               | 技術                                                          |
+| ------------------ | ------------------------------------------------------------- |
+| **フロントエンド** | React, TypeScript, Vite, Vanilla CSS                          |
+| **バックエンド**   | Rust, cargo-lambda, tokio                                     |
+| **AWS インフラ**   | Terraform, Lambda, API Gateway, DynamoDB, S3, CloudFront, SSM |
+| **AI (LLM)**       | Google Gemini API (`gemini-3.5-flash-lite`)                   |
+| **Web検索**        | Tavily AI Search API                                          |
 
 ## 📚 開発ドキュメント
 

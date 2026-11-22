@@ -50,7 +50,10 @@ export const mockAnalyzeResult = {
  * すべてのAPIエンドポイントをインターセプトしてモックレスポンスを返すセットアップ関数
  * これによりバックエンド未起動でも、外部APIトークン消費ゼロで実ブラウザE2Eテストを実行可能。
  */
-export async function setupApiMocks(page: Page, options: { topics?: typeof mockTopics; vocab?: typeof mockVocabulary } = {}) {
+export async function setupApiMocks(
+  page: Page,
+  options: { topics?: typeof mockTopics; vocab?: typeof mockVocabulary } = {}
+) {
   let currentTopics = options.topics ? [...options.topics] : [...mockTopics];
   let currentVocab = options.vocab ? [...options.vocab] : [...mockVocabulary];
 
@@ -64,20 +67,28 @@ export async function setupApiMocks(page: Page, options: { topics?: typeof mockT
       if (apiKey === 'invalid-key') {
         return route.fulfill({ status: 401, body: 'Unauthorized' });
       }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(currentTopics) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(currentTopics),
+      });
     }
 
     if (method === 'POST') {
       const postData = route.request().postDataJSON();
       const newTopic = { id: `topic-${Date.now()}`, name: postData.name };
       currentTopics.push(newTopic);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(newTopic) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(newTopic),
+      });
     }
 
     if (method === 'DELETE') {
       const pathname = new URL(url).pathname;
       const id = pathname.split('/').filter(Boolean).pop();
-      currentTopics = currentTopics.filter(t => t.id !== id);
+      currentTopics = currentTopics.filter((t) => t.id !== id);
       return route.fulfill({ status: 200, body: '' });
     }
 
@@ -90,20 +101,32 @@ export async function setupApiMocks(page: Page, options: { topics?: typeof mockT
     const url = route.request().url();
 
     if (method === 'GET') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(currentVocab) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(currentVocab),
+      });
     }
 
     if (method === 'POST') {
       const postData = route.request().postDataJSON();
-      const newVocab = { id: `vocab-${Date.now()}`, word: postData.word, translation: postData.translation };
+      const newVocab = {
+        id: `vocab-${Date.now()}`,
+        word: postData.word,
+        translation: postData.translation,
+      };
       currentVocab.push(newVocab);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(newVocab) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(newVocab),
+      });
     }
 
     if (method === 'DELETE') {
       const pathname = new URL(url).pathname;
       const id = pathname.split('/').filter(Boolean).pop();
-      currentVocab = currentVocab.filter(v => v.id !== id);
+      currentVocab = currentVocab.filter((v) => v.id !== id);
       return route.fulfill({ status: 200, body: '' });
     }
 

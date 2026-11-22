@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Run backend tests with terminal and HTML coverage reports"
+#MISE description="Run backend tests with terminal and HTML coverage reports"
 set -euo pipefail
 
 cd backend

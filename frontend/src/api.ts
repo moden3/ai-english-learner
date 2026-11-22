@@ -16,7 +16,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 
   const headers = new Headers(options.headers);
   headers.set('x-api-key', API_KEY);
-  
+
   // GET以外のリクエストでContent-Typeが未指定の場合はapplication/jsonをセット
   if (!headers.has('Content-Type') && options.method && options.method !== 'GET') {
     headers.set('Content-Type', 'application/json');
@@ -53,19 +53,21 @@ export interface Topic {
 }
 
 export const fetchTopics = () => fetchWithAuth('/topics') as Promise<Topic[]>;
-export const addTopic = (name: string) => fetchWithAuth('/topics', { method: 'POST', body: JSON.stringify({ name }) });
-export const deleteTopic = (id: string) => fetchWithAuth(`/topics/${id}`, { method: 'DELETE' });
+export const addTopic = (name: string) =>
+  fetchWithAuth('/topics', { method: 'POST', body: JSON.stringify({ name }) }) as Promise<Topic>;
+export const deleteTopic = (id: string) =>
+  fetchWithAuth(`/topics/${id}`, { method: 'DELETE' }) as Promise<Record<string, unknown>>;
 
 export const validateApiKey = async (key: string): Promise<boolean> => {
   try {
     const response = await fetch(`${API_URL}/topics`, {
       method: 'GET',
       headers: {
-        'x-api-key': key
-      }
+        'x-api-key': key,
+      },
     });
     return response.ok;
-  } catch (err) {
+  } catch {
     return false;
   }
 };
@@ -80,8 +82,13 @@ export interface Vocabulary {
 }
 
 export const fetchVocabulary = () => fetchWithAuth('/vocabulary') as Promise<Vocabulary[]>;
-export const addVocabulary = (word: string, translation: string) => fetchWithAuth('/vocabulary', { method: 'POST', body: JSON.stringify({ word, translation }) });
-export const deleteVocabulary = (id: string) => fetchWithAuth(`/vocabulary/${id}`, { method: 'DELETE' });
+export const addVocabulary = (word: string, translation: string) =>
+  fetchWithAuth('/vocabulary', {
+    method: 'POST',
+    body: JSON.stringify({ word, translation }),
+  }) as Promise<Vocabulary>;
+export const deleteVocabulary = (id: string) =>
+  fetchWithAuth(`/vocabulary/${id}`, { method: 'DELETE' }) as Promise<Record<string, unknown>>;
 
 // ==========================================
 // Generate Text API (AI連携)
@@ -91,10 +98,10 @@ export interface GenerateResult {
   source_url?: string;
 }
 
-export const generateText = (topic_name: string, use_web_search: boolean = false) => 
-  fetchWithAuth('/generate_text', { 
-    method: 'POST', 
-    body: JSON.stringify({ topic_name, use_web_search, action: 'generate' }) 
+export const generateText = (topic_name: string, use_web_search: boolean = false) =>
+  fetchWithAuth('/generate_text', {
+    method: 'POST',
+    body: JSON.stringify({ topic_name, use_web_search, action: 'generate' }),
   }) as Promise<GenerateResult>;
 
 export interface AnalyzeSegment {
@@ -116,8 +123,8 @@ export interface AnalyzeResult {
   keywords: AnalyzeKeyword[];
 }
 
-export const analyzeText = (text: string) => 
-  fetchWithAuth('/generate_text', { 
-    method: 'POST', 
-    body: JSON.stringify({ action: 'analyze', text }) 
+export const analyzeText = (text: string) =>
+  fetchWithAuth('/generate_text', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'analyze', text }),
   }) as Promise<AnalyzeResult>;

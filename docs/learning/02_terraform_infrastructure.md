@@ -20,7 +20,7 @@ resource "aws_lambda_function" "my_lambda" {
   filename      = "function.zip"
   handler       = "index.handler"
   runtime       = "nodejs20.x"
-  role          = aws_iam_role.lambda_exec.arn 
+  role          = aws_iam_role.lambda_exec.arn
 }
 
 # 2. API Gateway (HTTP API) の作成
@@ -46,7 +46,7 @@ resource "aws_apigatewayv2_integration" "lambda_integration" {
 # 4. ルーティングの設定 (Route)
 resource "aws_apigatewayv2_route" "api_route" {
   api_id    = aws_apigatewayv2_api.my_api.id
-  route_key = "GET /hello" 
+  route_key = "GET /hello"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
@@ -65,6 +65,7 @@ resource "aws_lambda_permission" "api_gw_permission" {
 ## トピック2: フロントエンドのセキュアな配信 (S3 + CloudFront)
 
 ### 配信アーキテクチャ
+
 ```mermaid
 sequenceDiagram
     participant User as ユーザー (ブラウザ)
@@ -75,11 +76,12 @@ sequenceDiagram
     CF->>S3: OACによる認証付きリクエスト
     S3-->>CF: コンテンツ返却
     CF-->>User: キャッシュ付き配信
-    
+
     note over CF,S3: SPA対策:<br>403/404エラー時は<br>index.html(200)を返す
 ```
 
 ### 設計のポイント
+
 - **S3の非公開化**: バケットへの直接アクセスを遮断（パブリックアクセス拒否）。
 - **OAC (Origin Access Control)**: CloudFrontからS3へ安全にアクセスするためのAWSの最新の認証方式（従来のOAIの代替）。S3側でCloudFrontからの通信のみを許可できるようになる。
 - **SPAルーティング対策**: React等のSPAでは、直接URLアクセス時にCloudFrontが403/404エラーとなるため、`index.html` (ステータス200) にフォールバックさせる設定が必須。
@@ -118,7 +120,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   default_root_object = "index.html"
-  
+
   # SPAのルーティング対策
   custom_error_response {
     error_code         = 403
@@ -186,7 +188,7 @@ RDBのようにテーブルを分割せず、1つのテーブル（`eng-app-tabl
 resource "aws_dynamodb_table" "main" {
   name         = "eng-app-table"
   billing_mode = "PAY_PER_REQUEST" # 使った分だけ課金（無料枠に最適）
-  
+
   hash_key  = "PK"
   range_key = "SK"
 
@@ -209,6 +211,7 @@ resource "aws_dynamodb_table" "main" {
 AWS側のAPIキー、Gemini APIキー、およびTavily Search APIキーはコードに直書きせず、SSM Parameter Storeの `SecureString` に保存します。
 
 ### 管理しているパラメータ一覧 (`backend/infra/ssm.tf`)
+
 1. `/eng-app/api-key`: クライアント（フロントエンド）とバックエンド間の簡易認証キー
 2. `/eng-app/gemini-api-key`: Google Gemini API 呼び出し用キー
 3. `/eng-app/tavily-api-key`: Tavily AI Search API 呼び出し用キー（最新ニュース検索用）

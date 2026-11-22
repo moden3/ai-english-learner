@@ -22,7 +22,23 @@ export default function VocabularyManager() {
   };
 
   useEffect(() => {
-    loadVocab();
+    let ignore = false;
+    fetchVocabulary()
+      .then((data) => {
+        if (!ignore) setVocab(data);
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error(err);
+          alert('Failed to load vocabulary.');
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleAdd = async (e: React.SyntheticEvent) => {
@@ -55,37 +71,90 @@ export default function VocabularyManager() {
       <h2>Vocabulary List</h2>
       <p>Review the words and phrases you have saved.</p>
 
-      <form onSubmit={handleAdd} style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
-        <input 
-          type="text" 
-          value={word} 
+      <form
+        onSubmit={handleAdd}
+        style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}
+      >
+        <input
+          type="text"
+          value={word}
           onChange={(e) => setWord(e.target.value)}
           placeholder="English Word/Phrase"
-          style={{ flex: 1, minWidth: '150px', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+          style={{
+            flex: 1,
+            minWidth: '150px',
+            padding: '10px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(0,0,0,0.2)',
+            color: 'white',
+          }}
         />
-        <input 
-          type="text" 
-          value={translation} 
+        <input
+          type="text"
+          value={translation}
           onChange={(e) => setTranslation(e.target.value)}
           placeholder="Japanese Translation"
-          style={{ flex: 1, minWidth: '150px', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+          style={{
+            flex: 1,
+            minWidth: '150px',
+            padding: '10px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(0,0,0,0.2)',
+            color: 'white',
+          }}
         />
-        <button type="submit" className="btn-primary">Save Word</button>
+        <button type="submit" className="btn-primary">
+          Save Word
+        </button>
       </form>
 
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {vocab.map(v => (
-            <li key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '12px 16px', borderRadius: '8px' }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          {vocab.map((v) => (
+            <li
+              key={v.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.05)',
+                padding: '12px 16px',
+                borderRadius: '8px',
+              }}
+            >
               <div>
-                <strong style={{ fontSize: '18px' }}>{v.word}</strong> <span style={{ opacity: 0.5, margin: '0 12px' }}>|</span> <span style={{ color: 'var(--text-secondary)' }}>{v.translation}</span>
+                <strong style={{ fontSize: '18px' }}>{v.word}</strong>{' '}
+                <span style={{ opacity: 0.5, margin: '0 12px' }}>|</span>{' '}
+                <span style={{ color: 'var(--text-secondary)' }}>{v.translation}</span>
               </div>
-              <button onClick={() => handleDelete(v.id)} className="btn-glass" style={{ padding: '6px 12px', borderColor: 'rgba(255,100,100,0.5)', color: '#ff8888' }}>Delete</button>
+              <button
+                onClick={() => handleDelete(v.id)}
+                className="btn-glass"
+                style={{
+                  padding: '6px 12px',
+                  borderColor: 'rgba(255,100,100,0.5)',
+                  color: '#ff8888',
+                }}
+              >
+                Delete
+              </button>
             </li>
           ))}
-          {vocab.length === 0 && <p style={{ textAlign: 'center', opacity: 0.5 }}>Your vocabulary list is empty.</p>}
+          {vocab.length === 0 && (
+            <p style={{ textAlign: 'center', opacity: 0.5 }}>Your vocabulary list is empty.</p>
+          )}
         </ul>
       )}
     </div>

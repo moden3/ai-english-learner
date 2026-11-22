@@ -13,11 +13,11 @@
 graph TD
     User((ユーザー)) -->|HTTPS| CF[Amazon CloudFront]
     CF -->|OAC| S3[Amazon S3 <br>フロントエンド静的ファイル]
-    
+
     User -->|HTTPS + x-api-key| APIGW[Amazon API Gateway <br>HTTP API]
-    
+
     APIGW -->|Invoke| Lambda[AWS Lambda <br>Rustバックエンド]
-    
+
     Lambda -->|Read/Write| DDB[(Amazon DynamoDB <br>トピック・単語帳)]
     Lambda -->|起動時一括読込| SSM[SSM Parameter Store <br>シークレット管理]
     Lambda -.->|最新ニュース検索| Tavily[Tavily AI Search API <br>Web検索エンジン]
@@ -107,7 +107,7 @@ sequenceDiagram
     APIGW->>Lam: APIキー検証 & プロキシ
     Lam->>DB: 単語データの保存 (PutItem)
     DB-->>Lam: 保存完了
-    Lam-->>APIGW: 
+    Lam-->>APIGW:
     APIGW-->>SPA: 200 OK
     SPA-->>U: 保存完了の通知 (Toast等を表示)
 ```
@@ -134,7 +134,7 @@ stateDiagram-v2
         TextGenerator : 英文生成画面
         TopicManager : トピック管理画面
         VocabularyManager : 単語帳画面
-        
+
         TextGenerator --> TopicManager : タブ切替
         TextGenerator --> VocabularyManager : タブ切替
     }
@@ -151,10 +151,10 @@ stateDiagram-v2
   - `/eng-app/api-key`: フロントエンドとバックエンドで共有する認証キー
   - `/eng-app/gemini-api-key`: Google Gemini APIキー
   - `/eng-app/tavily-api-key`: Tavily AI Search APIキー
-  フロントエンド側では初回アクセス時にユーザーが入力したキーを `sessionStorage` に保存して利用します。これにより、クライアントのソースコードへの直書きを回避します。
+    フロントエンド側では初回アクセス時にユーザーが入力したキーを `sessionStorage` に保存して利用します。これにより、クライアントのソースコードへの直書きを回避します。
 - **コールドスタート時のキーキャッシュ**: Lambdaの起動時（`main()`）にSSMから各APIキーを非同期取得してメモリにキャッシュ保持（`Arc<String>`）し、毎リクエストでのSSMフェッチ遅延を解消。
 - **検証ロジック**: API Gateway または Lambda の冒頭でヘッダーの `x-api-key` をチェック。不一致の場合は `401 Unauthorized` を返し、後続処理（Tavily/Gemini API呼び出し・DynamoDBアクセス）を遮断します。
-- **追加対策**: 
+- **追加対策**:
   - CORS設定で許可オリジンを自ドメイン（および開発時はlocalhost）に限定。
   - API Gateway スロットリングを設定し、万一キーが流出しても大量のアクセスおよび課金を防ぎます。
   - Web検索失敗時は曖昧なフォールバックを行わず、`503 Service Unavailable` を返却してユーザーにエラーを明示。
@@ -167,9 +167,9 @@ stateDiagram-v2
 
 **テーブル名**: `eng-app-table`
 
-| PK | SK | 用途 |
-|----|----|------|
-| `VOCAB` | `WORD#<uuid>` | 単語帳エントリ |
+| PK      | SK             | 用途           |
+| ------- | -------------- | -------------- |
+| `VOCAB` | `WORD#<uuid>`  | 単語帳エントリ |
 | `TOPIC` | `TOPIC#<uuid>` | トピックリスト |
 
 ---
@@ -187,32 +187,35 @@ APIの設計仕様（リクエスト・レスポンス・パス）について�
 本システムは、CI環境および手元での継続的テストを可能にするため、外部APIへの依存を完全にモック分離した3層のテスタビリティ構造を備えています。
 
 ### 7.1 バックエンド・テスト設計 (`backend/src`)
-* **依存性注入 (Dependency Injection)**:
+
+- **依存性注入 (Dependency Injection)**:
   `generate_text` ハンドラは外部APIのエンドポイントURLを保持する `ApiEndpoints` 構造体を受け取ります。本番環境ではデフォルト値（公式URL）を使用し、テスト環境ではローカルの `wiremock::MockServer` のURLを注入します。
-* **純粋関数の抽出 (`lib.rs`)**:
+- **純粋関数の抽出 (`lib.rs`)**:
   プロンプト生成（`build_generate_prompt`, `build_analyze_prompt`）や、Markdownブロック除去・JSON抽出（`extract_json_payload`）、認証検証（`validate_api_key`）などのロジックを副作用のない純粋関数として切り出し、単体テストを網羅。
-* **カバレッジ測定**:
+- **カバレッジ測定**:
   `cargo-llvm-cov` を用いて、テスト実行と同時にターミナルサマリーおよびHTMLレポート（`backend/target/llvm-cov/html/index.html`）を生成。
 
 ### 7.2 フロントエンド・単体/コンポーネントテスト設計 (`frontend/src`)
-* **Vitest + React Testing Library**:
+
+- **Vitest + React Testing Library**:
   ブラウザ起動のオーバーヘッドを排し、`jsdom` 環境で React 19 コンポーネントの状態変化、非同期ローディング、バリデーションを高速（約5秒）に検証（全40件）。
-* **ネットワーク通信の完全モック**:
+- **ネットワーク通信の完全モック**:
   `api.ts` の `fetch` 処理はテスト内でモック化され、実際のAPI Gatewayやバックエンドとの通信を行いません。401認証切れ時の自動セッション破棄や、503障害時のエラーメッセージ表示などのエッジケースを自在にシミュレート可能。
 
 ### 7.3 フロントエンド・実ブラウザE2Eテスト設計 (`frontend/e2e`)
-* **Playwright による実ブラウザ自動検証 (Chromium)**:
+
+- **Playwright による実ブラウザ自動検証 (Chromium)**:
   `jsdom` では捉えきれない実ブラウザのイベントループ、同期確認ダイアログ（`window.confirm`）、CSS Glassmorphism の描画、リロード時の `sessionStorage` 復元を自動検証（全6件）。
-* **`page.route` によるネットワーク完全遮断 (`frontend/e2e/mocks.ts`)**:
+- **`page.route` によるネットワーク完全遮断 (`frontend/e2e/mocks.ts`)**:
   Playwright のリクエストインターセプト機能により、バックエンド未起動でも外部通信（AWS API Gateway、Gemini、Tavily）を100%遮断して安全・高速に動作。トークン消費ゼロを保証。
-* **視覚的テスト・デバッグモード対応**:
+- **視覚的テスト・デバッグモード対応**:
   ヘッドレス実行だけでなく、GUIダッシュボード（`--ui`）、ブラウザ表示（`--headed`）、1行ずつのステップ実行（`--debug`）を柔軟に切り替え可能。
 
 ### 7.4 テスト実行コマンド (Mise)
+
 ```bash
 mise run test:all    # バックエンド ＋ フロントエンド（単体 ＋ E2E）一括実行 (計69件 PASS)
 mise run test:back   # バックエンド（Rust）カバレッジテストのみ (23件)
 mise run test:front  # フロントエンド（Vitest）単体・コンポーネントテストのみ (40件)
 mise run test:e2e    # フロントエンド（Playwright）実ブラウザE2Eテストのみ (6件)
 ```
-

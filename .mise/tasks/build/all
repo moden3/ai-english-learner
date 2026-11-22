@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Build both backend (Rust Lambda) and frontend (Vite)"
+#MISE depends=["build:back", "build:front"]
+set -euo pipefail
+
+echo "🎉 All builds (backend & frontend) completed successfully!"

@@ -99,7 +99,10 @@ async fn function_handler(
                     .item("PK", AttributeValue::S("VOCAB".into()))
                     .item("SK", AttributeValue::S(format!("WORD#{}", id)))
                     .item("word", AttributeValue::S(vocab_req.word.clone()))
-                    .item("translation", AttributeValue::S(vocab_req.translation.clone()))
+                    .item(
+                        "translation",
+                        AttributeValue::S(vocab_req.translation.clone()),
+                    )
                     .item("created_at", AttributeValue::S(created_at.clone()));
 
                 let res = put_req.send().await;
@@ -140,10 +143,11 @@ async fn function_handler(
             // ローカル環境 (cargo lambda watch) では path_parameters が自動解析されないためのフォールバック
             if id.is_none() {
                 let path = event.uri().path();
-                if let Some(last_seg) = path.split('/').last() {
-                    if !last_seg.is_empty() && last_seg != "vocabulary" {
-                        id = Some(last_seg.to_string());
-                    }
+                if let Some(last_seg) = path.split('/').next_back()
+                    && !last_seg.is_empty()
+                    && last_seg != "vocabulary"
+                {
+                    id = Some(last_seg.to_string());
                 }
             }
 
@@ -208,15 +212,68 @@ async fn main() -> Result<(), Error> {
 mod tests {
     use super::*;
     use aws_sdk_dynamodb::Config;
+    use aws_sdk_dynamodb::config::{Credentials, Region};
     use lambda_http::http::{Method, Request as HttpRequest};
+    use serde_json::json;
+    use wiremock::matchers::{any, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn create_dummy_client() -> Arc<Client> {
-        let config = Config::builder().behavior_version_latest().build();
+    // テスト用のDynamoDBクライアント（接続先URLだけをローカルの wiremock に向ける）
+    fn create_mock_client(mock_server: &MockServer) -> Arc<Client> {
+        let creds = Credentials::new("test", "test", None, None, "test");
+        let config = Config::builder()
+            .behavior_version_latest()
+            .region(Region::new("ap-northeast-1"))
+            .credentials_provider(creds)
+            .endpoint_url(mock_server.uri())
+            .build();
         Arc::new(Client::from_conf(config))
     }
 
     #[tokio::test]
-    async fn test_get_vocabulary_fails_without_real_db() {
+    async fn test_vocabulary_unauthorized_when_api_key_invalid() {
+        let mock_server = MockServer::start().await;
+        let client = create_mock_client(&mock_server);
+
+        let request = HttpRequest::builder()
+            .method(Method::GET)
+            .uri("/vocabulary")
+            .header("x-api-key", "wrong_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "secret_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 401);
+    }
+
+    #[tokio::test]
+    async fn test_get_vocabulary_success() {
+        let mock_server = MockServer::start().await;
+        let ddb_response = json!({
+            "Items": [
+                {
+                    "PK": { "S": "VOCAB" },
+                    "SK": { "S": "WORD#vocab-1" },
+                    "word": { "S": "ubiquitous" },
+                    "translation": { "S": "至る所にある" },
+                    "created_at": { "S": "2026-11-22T00:00:00Z" }
+                }
+            ],
+            "Count": 1,
+            "ScannedCount": 1
+        });
+
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(ddb_response))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
         let request = HttpRequest::builder()
             .method(Method::GET)
             .uri("/vocabulary")
@@ -224,25 +281,56 @@ mod tests {
             .body(Body::Empty)
             .expect("failed to build request");
 
-        let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table", "test_key")
+        let response = function_handler(request, client, "eng-app-table", "test_key")
             .await
             .expect("handler failed");
 
-        assert_eq!(
-            response.status(),
-            500,
-            "実際のDBがないため500エラーになるはずです"
-        );
+        assert_eq!(response.status(), 200);
+        let body_str = match response.body() {
+            Body::Text(s) => s.clone(),
+            _ => String::new(),
+        };
+        assert!(body_str.contains("vocab-1"));
+        assert!(body_str.contains("ubiquitous"));
+        assert!(body_str.contains("至る所にある"));
     }
 
     #[tokio::test]
-    async fn test_post_vocabulary_fails_without_real_db() {
-        let payload = r#"{
-            "word": "lazy",
-            "translation": "怠惰な"
-        }"#;
+    async fn test_get_vocabulary_dynamodb_error_returns_500() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
 
+        let client = create_mock_client(&mock_server);
+        let request = HttpRequest::builder()
+            .method(Method::GET)
+            .uri("/vocabulary")
+            .header("x-api-key", "test_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_post_vocabulary_success() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
+        let payload = r#"{"word": "resilient", "translation": "回復力のある"}"#;
         let request = HttpRequest::builder()
             .method(Method::POST)
             .uri("/vocabulary")
@@ -251,15 +339,149 @@ mod tests {
             .body(Body::Text(payload.to_string()))
             .expect("failed to build request");
 
-        let client = create_dummy_client();
-        let response = function_handler(request, client, "dummy_table", "test_key")
+        let response = function_handler(request, client, "eng-app-table", "test_key")
             .await
             .expect("handler failed");
 
-        assert_eq!(
-            response.status(),
-            500,
-            "実際のDBがないため500エラーになるはずです"
-        );
+        assert_eq!(response.status(), 201);
+        let body_str = match response.body() {
+            Body::Text(s) => s.clone(),
+            _ => String::new(),
+        };
+        assert!(body_str.contains("resilient"));
+        assert!(body_str.contains("回復力のある"));
+    }
+
+    #[tokio::test]
+    async fn test_post_vocabulary_invalid_body_returns_400() {
+        let mock_server = MockServer::start().await;
+        let client = create_mock_client(&mock_server);
+
+        let request = HttpRequest::builder()
+            .method(Method::POST)
+            .uri("/vocabulary")
+            .header("x-api-key", "test_key")
+            .header("content-type", "application/json")
+            .body(Body::Text("not valid json".to_string()))
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn test_post_vocabulary_dynamodb_error_returns_500() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
+        let payload = r#"{"word": "lazy", "translation": "怠惰な"}"#;
+        let request = HttpRequest::builder()
+            .method(Method::POST)
+            .uri("/vocabulary")
+            .header("x-api-key", "test_key")
+            .header("content-type", "application/json")
+            .body(Body::Text(payload.to_string()))
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_delete_vocabulary_success_with_uri_fallback() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
+        let request = HttpRequest::builder()
+            .method(Method::DELETE)
+            .uri("/vocabulary/vocab-uuid-999")
+            .header("x-api-key", "test_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 204);
+    }
+
+    #[tokio::test]
+    async fn test_delete_vocabulary_missing_id_returns_400() {
+        let mock_server = MockServer::start().await;
+        let client = create_mock_client(&mock_server);
+
+        let request = HttpRequest::builder()
+            .method(Method::DELETE)
+            .uri("/vocabulary")
+            .header("x-api-key", "test_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn test_delete_vocabulary_dynamodb_error_returns_500() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
+        let request = HttpRequest::builder()
+            .method(Method::DELETE)
+            .uri("/vocabulary/vocab-uuid-999")
+            .header("x-api-key", "test_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_vocabulary_unsupported_method_returns_405() {
+        let mock_server = MockServer::start().await;
+        let client = create_mock_client(&mock_server);
+
+        let request = HttpRequest::builder()
+            .method(Method::PATCH)
+            .uri("/vocabulary")
+            .header("x-api-key", "test_key")
+            .body(Body::Empty)
+            .expect("failed to build request");
+
+        let response = function_handler(request, client, "eng-app-table", "test_key")
+            .await
+            .expect("handler failed");
+
+        assert_eq!(response.status(), 405);
     }
 }

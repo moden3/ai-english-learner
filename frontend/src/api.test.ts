@@ -51,9 +51,11 @@ describe('API Client (api.ts)', () => {
 
     it('attaches x-api-key and Content-Type headers when authenticated', async () => {
       sessionStorage.setItem('api_key', 'my-auth-key');
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify([{ id: '1', name: 'tech' }]), { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify([{ id: '1', name: 'tech' }]), { status: 200 })
+        );
 
       const topics = await fetchTopics();
       expect(topics).toEqual([{ id: '1', name: 'tech' }]);
@@ -91,9 +93,9 @@ describe('API Client (api.ts)', () => {
     });
 
     it('addTopic sends POST with JSON body', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify({ success: true }), { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
 
       await addTopic('AI Ethics');
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -106,9 +108,9 @@ describe('API Client (api.ts)', () => {
     });
 
     it('deleteTopic sends DELETE request', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('', { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('', { status: 200 }));
 
       await deleteTopic('topic-123');
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -134,9 +136,9 @@ describe('API Client (api.ts)', () => {
     });
 
     it('addVocabulary sends POST with word and translation', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify({ success: true }), { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
 
       await addVocabulary('resilient', '回復力のある');
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -149,9 +151,9 @@ describe('API Client (api.ts)', () => {
     });
 
     it('deleteVocabulary sends DELETE request', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('', { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('', { status: 200 }));
 
       await deleteVocabulary('vocab-999');
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -167,10 +169,13 @@ describe('API Client (api.ts)', () => {
     });
 
     it('generateText sends topic_name and use_web_search flag', async () => {
-      const mockResponse = { text: 'Sample AI generated text', source_url: 'https://news.example.com' };
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify(mockResponse), { status: 200 })
-      );
+      const mockResponse = {
+        text: 'Sample AI generated text',
+        source_url: 'https://news.example.com',
+      };
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify(mockResponse), { status: 200 }));
 
       const result = await generateText('Semiconductors', true);
       expect(result).toEqual(mockResponse);
@@ -189,12 +194,16 @@ describe('API Client (api.ts)', () => {
 
     it('analyzeText sends text to analyze', async () => {
       const mockAnalysis = {
-        segments: [{ id: 1, text: 'Hello world', translation: 'こんにちは世界', grammar_note: '挨拶' }],
-        keywords: [{ word: 'world', meaning: '世界', part_of_speech: 'noun', example: 'The world is big' }],
+        segments: [
+          { id: 1, text: 'Hello world', translation: 'こんにちは世界', grammar_note: '挨拶' },
+        ],
+        keywords: [
+          { word: 'world', meaning: '世界', part_of_speech: 'noun', example: 'The world is big' },
+        ],
       };
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify(mockAnalysis), { status: 200 })
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify(mockAnalysis), { status: 200 }));
 
       const result = await analyzeText('Hello world');
       expect(result).toEqual(mockAnalysis);

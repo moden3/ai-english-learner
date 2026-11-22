@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#MISE description="Format all code, infrastructure, and documentation (use --check to verify without modifying)"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+CHECK_MODE=false
+if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
+    CHECK_MODE=true
+fi
+
+if [ "$CHECK_MODE" = true ]; then
+    echo "🦀 Checking Rust backend format (cargo fmt --check)..."
+    cd "$PROJECT_ROOT/backend"
+    cargo fmt --all -- --check
+
+    echo "☁️ Checking Terraform infrastructure format (terraform fmt -check)..."
+    cd "$PROJECT_ROOT/backend/infra"
+    terraform fmt -check -recursive
+
+    echo "✨ Checking Frontend & Documentation format (Prettier --check)..."
+    cd "$PROJECT_ROOT/frontend"
+    npx prettier --check \
+      --config "$PROJECT_ROOT/.prettierrc.json" \
+      --ignore-path "$PROJECT_ROOT/.prettierignore" \
+      "$PROJECT_ROOT/**/*.{ts,tsx,js,jsx,css,html,json,md,yml,yaml}"
+
+    echo "✅ All formatting checks passed!"
+else
+    echo "🦀 Formatting Rust backend (cargo fmt)..."
+    cd "$PROJECT_ROOT/backend"
+    cargo fmt --all
+
+    echo "☁️ Formatting Terraform infrastructure (terraform fmt)..."
+    cd "$PROJECT_ROOT/backend/infra"
+    terraform fmt -recursive
+
+    echo "✨ Formatting Frontend & Documentation (Prettier)..."
+    cd "$PROJECT_ROOT/frontend"
+    npx prettier --write \
+      --config "$PROJECT_ROOT/.prettierrc.json" \
+      --ignore-path "$PROJECT_ROOT/.prettierignore" \
+      "$PROJECT_ROOT/**/*.{ts,tsx,js,jsx,css,html,json,md,yml,yaml}"
+
+    echo "✅ Formatting completed successfully!"
+fi

@@ -1,7 +1,7 @@
 use aws_sdk_ssm::Client as SsmClient;
 use eng_app_backend::{
-    build_analyze_prompt, build_generate_prompt, extract_json_payload, format_news_context,
-    validate_api_key, TavilyResult,
+    TavilyResult, build_analyze_prompt, build_generate_prompt, extract_json_payload,
+    format_news_context, validate_api_key,
 };
 use lambda_http::{Body, Error, Request, RequestPayloadExt, Response, run, service_fn};
 use reqwest::Client as HttpClient;
@@ -155,10 +155,13 @@ async fn function_handler(
 
     // ダミーモードの判定
     // 1. トピック名が "test" または "dummy" で始まる
-    // 2. Gemini APIキーが未設定（空文字 or プレースホルダー）
+    // 2. 解析対象テキストが "(Dummy Mode)" で始まる (ダミー生成記事の構文解析時)
+    // 3. Gemini APIキーが未設定（空文字 or プレースホルダー）
     let topic_name = req_body.topic_name.clone().unwrap_or_default();
+    let text_to_analyze = req_body.text.clone().unwrap_or_default();
     let is_dummy_mode = topic_name.to_lowercase().starts_with("test")
         || topic_name.to_lowercase().starts_with("dummy")
+        || text_to_analyze.starts_with("(Dummy Mode)")
         || gemini_api_key.is_empty()
         || gemini_api_key.as_str() == "CHANGE_ME_GEMINI_KEY";
 
@@ -201,7 +204,6 @@ async fn function_handler(
 
     // アクションに応じたプロンプトの作成
     let prompt = if action == "analyze" {
-        let text_to_analyze = req_body.text.unwrap_or_default();
         build_analyze_prompt(&text_to_analyze)
     } else {
         let use_web_search = req_body.use_web_search.unwrap_or(false);
@@ -431,6 +433,43 @@ mod tests {
             _ => String::new(),
         };
         assert!(body_str.contains("Dummy Mode"));
+    }
+
+    #[tokio::test]
+    async fn test_dummy_mode_analyze_skips_external_api_calls() {
+        let payload =
+            r#"{"action": "analyze", "text": "(Dummy Mode) This is a generated test article."}"#;
+        let request = HttpRequest::builder()
+            .method(Method::POST)
+            .uri("/generate_text")
+            .header("x-api-key", "secret_key")
+            .header("content-type", "application/json")
+            .body(Body::Text(payload.to_string()))
+            .expect("failed to build request");
+
+        let http_client = Arc::new(HttpClient::new());
+        let gemini_api_key = Arc::new("real_gemini_key".into());
+        let tavily_api_key = Arc::new("real_tavily_key".into());
+        let mock_server = MockServer::start().await;
+        let endpoints = make_test_endpoints(&mock_server);
+
+        let response = function_handler(
+            request,
+            http_client,
+            "secret_key",
+            gemini_api_key,
+            tavily_api_key,
+            endpoints,
+        )
+        .await
+        .expect("handler failed");
+
+        assert_eq!(response.status(), 200);
+        let body_str = match response.body() {
+            Body::Text(s) => s.clone(),
+            _ => String::new(),
+        };
+        assert!(body_str.contains("This is a dummy"));
     }
 
     #[tokio::test]

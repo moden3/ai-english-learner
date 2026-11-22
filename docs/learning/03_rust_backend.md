@@ -1,9 +1,11 @@
 # 3. Rustによるサーバーレスバックエンド
 
 ## Cargo Lambdaによる開発
+
 AWS LambdaをRustで開発するためのデファクトツール。スクリプト言語とは異なり、コンパイルによる高速な起動(コールドスタート対策)と安全性が得られる。
 
 ### 実装サンプル (コールドスタート最適化とシークレットキャッシュ)
+
 Lambdaの初回起動時（`main()`）にAWS SSMからAPIキーを取得し、スレッドセーフな参照カウントポインタ `Arc` でハンドラに渡すことで、リクエストごとのSSM呼び出しオーバーヘッド（数百ms）を完全にゼロにします。また、HTTPクライアント（`reqwest::Client`）も `Arc` でプールを使い回します。
 
 ```rust
@@ -40,7 +42,7 @@ async fn function_handler(
     if !validate_api_key(&event, app_api_key) {
         return Ok(Response::builder().status(401).body("Unauthorized".into())?);
     }
-    
+
     // ビジネスロジック（Tavily検索やGemini API呼び出し）
     // ...
     Ok(Response::builder().status(200).body("OK".into())?)
@@ -82,13 +84,15 @@ async fn main() -> Result<(), Error> {
 
 テスト容易性（Testability）を高める基本原則は、**「I/O（ネットワーク・DB）を伴う処理」と「純粋な計算ロジック（ビジネスロジック）」を分離すること**です。
 
-| 対象レイヤー | 処理内容の例 | テスト手法 | モックの要否 |
-| :--- | :--- | :--- | :---: |
-| **純粋関数 (Core Logic)** | プロンプト組み立て、ニュース文字数の切り詰め、Markdown除去・JSON抽出、APIキー文字列検証 | `#[test]` による通常の単体テスト | **不要** (入力と出力のみで完結) |
-| **I/O・外部連携 (Integration)** | Tavily REST API、Gemini REST API、AWS DynamoDB | `#[tokio::test]` + HTTPモック (`wiremock`) | **必要** (外部通信を遮断) |
+| 対象レイヤー                    | 処理内容の例                                                                            | テスト手法                                 |          モックの要否           |
+| :------------------------------ | :-------------------------------------------------------------------------------------- | :----------------------------------------- | :-----------------------------: |
+| **純粋関数 (Core Logic)**       | プロンプト組み立て、ニュース文字数の切り詰め、Markdown除去・JSON抽出、APIキー文字列検証 | `#[test]` による通常の単体テスト           | **不要** (入力と出力のみで完結) |
+| **I/O・外部連携 (Integration)** | Tavily REST API、Gemini REST API、AWS DynamoDB                                          | `#[tokio::test]` + HTTPモック (`wiremock`) |    **必要** (外部通信を遮断)    |
 
 #### 純粋関数（Pure Functions）の切り出し (`src/lib.rs`)
+
 Lambdaハンドラの中にプロンプト生成や正規表現パースを混在させず、副作用を持たない関数として独立させます。
+
 ```rust
 // プロンプト生成: 入力（トピック名・ニュース）から出力（文字列）への純粋関数
 pub fn build_generate_prompt(topic: &str, news_context: Option<&str>) -> String;
@@ -96,6 +100,7 @@ pub fn build_generate_prompt(topic: &str, news_context: Option<&str>) -> String;
 // JSON抽出: LLMの生出力からMarkdownや前後テキストを除去して安全にパースする純粋関数
 pub fn extract_json_payload<T: DeserializeOwned>(raw: &str) -> Result<T, Error>;
 ```
+
 これにより、HTTP通信やモックライブラリを一切セットアップすることなく、ミリ秒単位で境界値テスト（空文字、長文、不正JSONなど）を実行可能になります。
 
 ---
@@ -105,7 +110,9 @@ pub fn extract_json_payload<T: DeserializeOwned>(raw: &str) -> Result<T, Error>;
 本プロジェクトでは、外部通信（Tavily, Gemini）を安全にテストするため、**エンドポイントURLの依存性注入 (Dependency Injection)** とローカルHTTPモックサーバー **`wiremock`** を採用しています。
 
 #### 設計の仕組み
+
 HTTPクライアントの接続先URLを `ApiEndpoints` 構造体として切り出し、ハンドラへ注入します。
+
 ```rust
 #[derive(Clone)]
 pub struct ApiEndpoints {
@@ -122,10 +129,12 @@ impl Default for ApiEndpoints {
     }
 }
 ```
+
 - **本番環境**: デフォルト値（`ApiEndpoints::default()`）を使用して公式の外部APIへ接続。
 - **テスト環境**: ローカルで動的に空きポートを確保した `wiremock::MockServer` のURLを注入。
 
 #### なぜこの手法を採用したのか
+
 1. **通信層全体を一気通貫で検証できる**:
    Traitによるインターフェースモックとは異なり、`reqwest` による実際のリクエスト組み立て（HTTPメソッド、Path、ヘッダー、JSONシリアライズ）から、ステータスコード判定、デシリアライズまで、**通信処理全体を本番と全く同じコードパスで検証**できます。
 2. **過剰な抽象化を避け、コードをシンプルに保てる**:
@@ -184,12 +193,13 @@ LLMを組み込んだバックエンドでは、従来のWeb APIテストには�
 ### 5. コードカバレッジ計測 (`cargo-llvm-cov`) による品質可視化
 
 テストがソースコードのどの分岐をカバーできているかを客観的に把握するため、LLVMソースベースカバレッジツールを活用します。
+
 - **行カバレッジ (Line Coverage)**: 実行された行の割合。
 - **分岐・領域カバレッジ (Region Coverage)**: `if / match` 等の分岐条件網羅率。
-テスト実行時にターミナルサマリーと同時にHTMLレポート（`target/llvm-cov/html/index.html`）を生成し、未テストのエラーハンドリング分岐（例: 異常系ステータス時の処理）を視覚的に特定・補強します。
-
+  テスト実行時にターミナルサマリーと同時にHTMLレポート（`target/llvm-cov/html/index.html`）を生成し、未テストのエラーハンドリング分岐（例: 異常系ステータス時の処理）を視覚的に特定・補強します。
 
 ## RustバイナリのZIPデプロイ方式
+
 RustをAWS Lambdaで動かす場合、「カスタムランタイム (provided.al2023)」を利用する。
 
 - **デプロイの流れ**:
@@ -198,17 +208,20 @@ RustをAWS Lambdaで動かす場合、「カスタムランタイム (provided.a
   3. TerraformでこのZIPファイルをデプロイする。（※Terraform側の設定例については `01_terraform_infrastructure.md` を参照）
 
 ## DynamoDB シングルテーブル設計
+
 NoSQLのベストプラクティス。RDBのようにテーブルを分割せず、1つのテーブル（`eng-app-table`）で複数種類のデータを扱う。
 
 ### キー構造と役割
-| キー種別 | 名称 (Terraform) | 役割 | 本アプリでの利用例 | 検索仕様 |
-| :--- | :--- | :--- | :--- | :--- |
-| **PK** | `hash_key` | データが保存されるサーバーの決定、データの大分類 | `TOPIC`, `VOCAB` | **完全一致**のみ |
-| **SK** | `range_key` | データの並び替え、一意な識別子 | `TOPIC#<uuid>` | 前方一致(`begins_with`)・範囲指定可能 |
+
+| キー種別 | 名称 (Terraform) | 役割                                             | 本アプリでの利用例 | 検索仕様                              |
+| :------- | :--------------- | :----------------------------------------------- | :----------------- | :------------------------------------ |
+| **PK**   | `hash_key`       | データが保存されるサーバーの決定、データの大分類 | `TOPIC`, `VOCAB`   | **完全一致**のみ                      |
+| **SK**   | `range_key`      | データの並び替え、一意な識別子                   | `TOPIC#<uuid>`     | 前方一致(`begins_with`)・範囲指定可能 |
 
 （※DynamoDBテーブル構築のTerraformコード例については `01_terraform_infrastructure.md` を参照）
 
 ### UUIDによる一意性担保の工夫
+
 同名のデータ（例: ユーザーが「Technology」というトピックを2つ作成）が存在する場合の、意図せぬデータ上書きを防ぐ設計。
 
 - ❌ **SKをデータ名にした場合**: 重複した瞬間に古いデータが上書き（破壊）される。

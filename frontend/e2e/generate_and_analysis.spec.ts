@@ -12,7 +12,9 @@ test.describe('Article Generation & Analysis Flow (E2E)', () => {
     await expect(page.getByRole('heading', { name: 'Generate Text' })).toBeVisible();
   });
 
-  test('generates article, switches to slash reading, expands grammar notes, and saves vocabulary', async ({ page }) => {
+  test('generates article, switches to slash reading, expands grammar notes, and saves vocabulary', async ({
+    page,
+  }) => {
     // 1. トピック選択
     const topicSelect = page.getByRole('combobox');
     await expect(topicSelect).toBeVisible();

@@ -45,41 +45,55 @@ describe('TextGenerator Component', () => {
     vi.spyOn(api, 'fetchTopics').mockResolvedValue(mockTopics);
   });
 
-  it('renders topics in select dropdown and web search checkbox unchecked by default', async () => {
+  it('renders topics in select dropdown with Random (Auto-select) selected by default and web search checkbox unchecked', async () => {
     render(<TextGenerator />);
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox')).toHaveValue('Macroeconomics');
+      expect(screen.getByRole('option', { name: 'Macroeconomics' })).toBeInTheDocument();
     });
+    expect(screen.getByRole('combobox')).toHaveValue('');
 
     const checkbox = screen.getByRole('checkbox', { name: /最新ニュースを参照して生成する/i });
     expect(checkbox).not.toBeChecked();
   });
 
-  it('generates text without web search when checkbox is unchecked', async () => {
+  it('auto-selects a random topic without overwriting the dropdown value when Random is selected', async () => {
     const generateSpy = vi.spyOn(api, 'generateText').mockResolvedValueOnce(mockGeneratedResult);
+    vi.spyOn(Math, 'random').mockReturnValue(0.9); // picks index 1 ('Quantum Computing')
     const user = userEvent.setup();
 
     render(<TextGenerator />);
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('Macroeconomics'));
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Quantum Computing' })).toBeInTheDocument()
+    );
 
     const generateButton = screen.getByRole('button', { name: /Generate Now/i });
     await user.click(generateButton);
 
-    expect(generateSpy).toHaveBeenCalledWith('Macroeconomics', false);
+    expect(generateSpy).toHaveBeenCalledWith('Quantum Computing', false);
+    // セレクトボックスは Random ('') のまま維持されること
+    expect(screen.getByRole('combobox')).toHaveValue('');
 
     await waitFor(() => {
-      expect(screen.getByText('Quantum computing is rapidly advancing in modern physics.')).toBeInTheDocument();
+      expect(screen.getByText('Topic: Quantum Computing')).toBeInTheDocument();
+      expect(
+        screen.getByText('Quantum computing is rapidly advancing in modern physics.')
+      ).toBeInTheDocument();
       expect(screen.getByText('https://news.example.com/quantum')).toBeInTheDocument();
     });
   });
 
-  it('generates text with web search enabled when checkbox is checked', async () => {
+  it('generates text with selected topic and web search enabled when checkbox is checked', async () => {
     const generateSpy = vi.spyOn(api, 'generateText').mockResolvedValueOnce(mockGeneratedResult);
     const user = userEvent.setup();
 
     render(<TextGenerator />);
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('Macroeconomics'));
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Macroeconomics' })).toBeInTheDocument()
+    );
+
+    await user.selectOptions(screen.getByRole('combobox'), 'Macroeconomics');
+    expect(screen.getByRole('combobox')).toHaveValue('Macroeconomics');
 
     const checkbox = screen.getByRole('checkbox', { name: /最新ニュースを参照して生成する/i });
     await user.click(checkbox);
@@ -101,7 +115,9 @@ describe('TextGenerator Component', () => {
     const user = userEvent.setup();
 
     render(<TextGenerator />);
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('Macroeconomics'));
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Macroeconomics' })).toBeInTheDocument()
+    );
 
     // 英文生成
     await user.click(screen.getByRole('button', { name: /Generate Now/i }));
@@ -131,7 +147,9 @@ describe('TextGenerator Component', () => {
     });
 
     // キーワードを単語帳に追加
-    const addVocabSpy = vi.spyOn(api, 'addVocabulary').mockResolvedValueOnce({ success: true } as any);
+    const addVocabSpy = vi
+      .spyOn(api, 'addVocabulary')
+      .mockResolvedValueOnce({ id: '1', word: 'advancing', translation: '進歩している' });
     const saveVocabButton = screen.getByRole('button', { name: '+ Save to Vocabulary' });
     await user.click(saveVocabButton);
 

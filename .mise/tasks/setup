@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Install dependencies, tools (Rust, Cargo Lambda, Playwright), and init terraform"
+#MISE description="Install dependencies, tools (Rust, Cargo Lambda, Playwright), init terraform, and setup git hooks"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,6 +91,14 @@ fi
 echo "☁️ Initializing terraform..."
 cd "$PROJECT_ROOT/backend/infra"
 terraform init
+
+# ----------------------------------------------------------------------
+# 7. Git Hooks (pre-commit) の有効化
+# ----------------------------------------------------------------------
+echo "🪝 Configuring git hooks (core.hooksPath -> .githooks)..."
+cd "$PROJECT_ROOT"
+git config core.hooksPath .githooks
+chmod +x "$PROJECT_ROOT/.githooks/pre-commit"
 
 echo ""
 echo "✅ All environment setup complete!"

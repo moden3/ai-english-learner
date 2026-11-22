@@ -12,7 +12,9 @@ test.describe('Topic & Vocabulary Management Flow (E2E)', () => {
     await expect(page.getByRole('heading', { name: 'Generate Text' })).toBeVisible();
   });
 
-  test('manages topics: views list, adds new topic, and deletes existing topic', async ({ page }) => {
+  test('manages topics: views list, adds new topic, and deletes existing topic', async ({
+    page,
+  }) => {
     // 1. Topic Manager へ遷移
     await page.getByRole('button', { name: 'Topic Manager' }).click();
     await expect(page.getByRole('heading', { name: 'Topics Manager' })).toBeVisible();

@@ -50,7 +50,9 @@ describe('VocabularyManager Component', () => {
       .mockResolvedValueOnce(initialList)
       .mockResolvedValueOnce(updatedList);
 
-    const addVocabSpy = vi.spyOn(api, 'addVocabulary').mockResolvedValueOnce({ success: true } as any);
+    const addVocabSpy = vi
+      .spyOn(api, 'addVocabulary')
+      .mockResolvedValueOnce({ id: '2', word: 'lucrative', translation: '利益の上がる' });
     const user = userEvent.setup();
 
     render(<VocabularyManager />);
@@ -96,11 +98,9 @@ describe('VocabularyManager Component', () => {
 
   it('deletes vocabulary item when confirmed', async () => {
     const initialList = [{ id: 'item-1', word: 'redundant', translation: '不要な' }];
-    vi.spyOn(api, 'fetchVocabulary')
-      .mockResolvedValueOnce(initialList)
-      .mockResolvedValueOnce([]);
+    vi.spyOn(api, 'fetchVocabulary').mockResolvedValueOnce(initialList).mockResolvedValueOnce([]);
 
-    const deleteSpy = vi.spyOn(api, 'deleteVocabulary').mockResolvedValueOnce({ success: true } as any);
+    const deleteSpy = vi.spyOn(api, 'deleteVocabulary').mockResolvedValueOnce({});
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
 

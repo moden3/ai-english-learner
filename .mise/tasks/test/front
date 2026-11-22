@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Run frontend component and unit tests (Vitest)"
+#MISE description="Run frontend component and unit tests (Vitest)"
 set -euo pipefail
 
 cd frontend

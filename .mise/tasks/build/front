@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Build frontend production bundle (TypeScript & Vite)"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+echo "🔨 Building frontend..."
+cd "$PROJECT_ROOT/frontend"
+npm run build "$@"
+echo "✅ Frontend build complete!"

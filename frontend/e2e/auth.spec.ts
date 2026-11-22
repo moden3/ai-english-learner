@@ -10,7 +10,9 @@ test.describe('Authentication & Session Flow (E2E)', () => {
     await page.goto('/');
 
     await expect(page.getByText('ENG-APP')).toBeVisible();
-    await expect(page.getByText('Please enter your API Key to access the application.')).toBeVisible();
+    await expect(
+      page.getByText('Please enter your API Key to access the application.')
+    ).toBeVisible();
     await expect(page.getByPlaceholder('API Key')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Login' })).toBeVisible();
   });

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Run all tests (backend coverage, frontend component & E2E tests)"
+#MISE description="Run all tests (backend coverage, frontend component & E2E tests)"
 set -euo pipefail
 
 mise run test:back

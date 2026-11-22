@@ -21,7 +21,23 @@ export default function TopicManager() {
   };
 
   useEffect(() => {
-    loadTopics();
+    let ignore = false;
+    fetchTopics()
+      .then((data) => {
+        if (!ignore) setTopics(data);
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error(err);
+          alert('Failed to load topics.');
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleAdd = async (e: React.SyntheticEvent) => {
@@ -54,27 +70,66 @@ export default function TopicManager() {
       <p>Manage your custom topics for article generation.</p>
 
       <form onSubmit={handleAdd} style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-        <input 
-          type="text" 
-          value={newTopic} 
+        <input
+          type="text"
+          value={newTopic}
           onChange={(e) => setNewTopic(e.target.value)}
           placeholder="New topic (e.g., technology)"
-          style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(0,0,0,0.2)',
+            color: 'white',
+          }}
         />
-        <button type="submit" className="btn-primary">Add Topic</button>
+        <button type="submit" className="btn-primary">
+          Add Topic
+        </button>
       </form>
 
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {topics.map(t => (
-            <li key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '12px 16px', borderRadius: '8px' }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          {topics.map((t) => (
+            <li
+              key={t.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.05)',
+                padding: '12px 16px',
+                borderRadius: '8px',
+              }}
+            >
               <span>{t.name}</span>
-              <button onClick={() => handleDelete(t.id)} className="btn-glass" style={{ padding: '6px 12px', borderColor: 'rgba(255,100,100,0.5)', color: '#ff8888' }}>Delete</button>
+              <button
+                onClick={() => handleDelete(t.id)}
+                className="btn-glass"
+                style={{
+                  padding: '6px 12px',
+                  borderColor: 'rgba(255,100,100,0.5)',
+                  color: '#ff8888',
+                }}
+              >
+                Delete
+              </button>
             </li>
           ))}
-          {topics.length === 0 && <p style={{ textAlign: 'center', opacity: 0.5 }}>No topics found.</p>}
+          {topics.length === 0 && (
+            <p style={{ textAlign: 'center', opacity: 0.5 }}>No topics found.</p>
+          )}
         </ul>
       )}
     </div>

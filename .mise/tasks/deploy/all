@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Deploy infrastructure, then frontend"
+#MISE description="Deploy infrastructure, then frontend"
 set -e
 
 mise run deploy:infra

@@ -8,7 +8,7 @@ beforeEach(() => {
 
   window.alert = vi.fn();
   window.confirm = vi.fn(() => true);
-  
+
   // window.location の reload をスパイ可能にする
   Object.defineProperty(window, 'location', {
     writable: true,

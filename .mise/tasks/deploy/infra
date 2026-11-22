@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# mise description="Deploy AWS infrastructure using Terraform"
-set -e
+#MISE description="Deploy AWS infrastructure using Terraform"
+set -euo pipefail
 
-echo "🦀 Building Rust Lambda functions..."
-cd backend
-cargo lambda build --release
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+mise run build:back
 
 echo "☁️ Applying Terraform..."
-cd infra
+cd "$PROJECT_ROOT/backend/infra"
 terraform apply -auto-approve
 
 echo "✅ Infrastructure deployment complete!"

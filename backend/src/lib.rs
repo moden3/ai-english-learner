@@ -106,11 +106,7 @@ pub fn format_news_context(results: &[TavilyResult]) -> (String, String) {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let truncated_content = if r.content.len() > 400 {
-                &r.content[..400]
-            } else {
-                &r.content
-            };
+            let truncated_content: String = r.content.chars().take(400).collect();
             format!(
                 "[{}] Title: {}\n    URL: {}\n    Content: {}",
                 i + 1,
@@ -184,12 +180,11 @@ pub fn extract_json_payload(raw_text: &str) -> Result<serde_json::Value, String>
     let mut cleaned = raw_text.trim();
 
     // Markdownコードブロックや余分なテキストを除去し、最外殻のJSON波括弧を抽出
-    if let Some(start) = cleaned.find('{') {
-        if let Some(end) = cleaned.rfind('}') {
-            if start <= end {
-                cleaned = &cleaned[start..=end];
-            }
-        }
+    if let Some(start) = cleaned.find('{')
+        && let Some(end) = cleaned.rfind('}')
+        && start <= end
+    {
+        cleaned = &cleaned[start..=end];
     }
 
     serde_json::from_str(cleaned).map_err(|e| format!("Failed to parse JSON payload: {:?}", e))
@@ -198,7 +193,66 @@ pub fn extract_json_payload(raw_text: &str) -> Result<serde_json::Value, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_sdk_ssm::Config as SsmConfig;
+    use aws_sdk_ssm::config::{Credentials, Region};
     use lambda_http::http::Request as HttpRequest;
+    use serde_json::json;
+    use wiremock::matchers::{any, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn create_mock_ssm_client(mock_server: &MockServer) -> SsmClient {
+        let creds = Credentials::new("test", "test", None, None, "test");
+        let config = SsmConfig::builder()
+            .behavior_version_latest()
+            .region(Region::new("ap-northeast-1"))
+            .credentials_provider(creds)
+            .endpoint_url(mock_server.uri())
+            .build();
+        SsmClient::from_conf(config)
+    }
+
+    #[tokio::test]
+    async fn test_get_keys_from_ssm_and_fallback() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "Parameter": {
+                    "Name": "/eng-app/key",
+                    "Type": "SecureString",
+                    "Value": "ssm-secret-value"
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let ssm_client = create_mock_ssm_client(&mock_server);
+        assert_eq!(get_api_key(&ssm_client).await, "ssm-secret-value");
+        assert_eq!(get_gemini_api_key(&ssm_client).await, "ssm-secret-value");
+        assert_eq!(get_tavily_api_key(&ssm_client).await, "ssm-secret-value");
+
+        // SSMエラー時のフォールバック検証
+        let err_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(any())
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&err_server)
+            .await;
+        let err_ssm_client = create_mock_ssm_client(&err_server);
+        assert_eq!(
+            get_api_key(&err_ssm_client).await,
+            "CHANGE_ME_INITIAL_VALUE"
+        );
+        assert_eq!(get_gemini_api_key(&err_ssm_client).await, "");
+        assert_eq!(get_tavily_api_key(&err_ssm_client).await, "");
+    }
+
+    #[test]
+    fn test_format_news_context_empty() {
+        let (context, url) = format_news_context(&[]);
+        assert!(context.is_empty());
+        assert!(url.is_empty());
+    }
 
     #[test]
     fn test_validate_api_key_valid() {
@@ -258,6 +312,22 @@ mod tests {
         // 400文字でトランケーションされているか確認
         assert!(!context.contains(&"A".repeat(401)));
         assert!(context.contains(&"A".repeat(400)));
+    }
+
+    #[test]
+    fn test_format_news_context_multibyte_utf8_does_not_panic() {
+        // マルチバイト文字（’ や — や日本語）が400バイト境界をまたいでもパニックしないことを検証
+        let multibyte_text = "’—€あ".repeat(150); // 600 chars (> 400 bytes)
+        let results = vec![TavilyResult {
+            title: "Multibyte News".into(),
+            content: multibyte_text,
+            url: "https://example.com/utf8".into(),
+        }];
+
+        let (context, source_url) = format_news_context(&results);
+        assert_eq!(source_url, "https://example.com/utf8");
+        assert!(context.contains(&"’—€あ".repeat(100)));
+        assert!(!context.contains(&"’—€あ".repeat(101)));
     }
 
     #[test]

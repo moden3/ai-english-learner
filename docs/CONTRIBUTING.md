@@ -9,11 +9,14 @@
 したがって、**事前に開発者が手動でインストールする必要があるのは `mise` のみ** である。
 
 ### 1.1 mise (タスク・環境管理ツール)
+
 以下のコマンドでインストールすること。
+
 ```bash
 curl https://mise.run | sh
 # Macの場合は brew install mise も可能
 ```
+
 > インストール後、`mise` コマンドが認識されない場合は、シェルの設定ファイル（`.bashrc` や `.zshrc` など）にパスを追加するか、ターミナルを再起動してください。
 > 参考: `echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc`
 
@@ -43,12 +46,14 @@ mise run setup
 ```
 
 > **`mise run setup` で自動実行される処理:**
+>
 > 1. 🦀 **Rust ツールチェーンのセットアップ** (未インストール時は `rustup` および stable ツールチェーンを自動導入)
 > 2. ⚡ **Cargo Lambda のセットアップ** (Lambda 関数のローカル実行・ビルドツールを自動導入)
 > 3. 🧪 **バックエンドのテスト・カバレッジツール導入** (`cargo-llvm-cov`, `llvm-tools-preview`)
 > 4. 📦 **フロントエンド依存パッケージの導入** (`npm install`)
 > 5. 🎭 **Playwright ヘッドレスブラウザ・Linux 共有ライブラリのセットアップ**
 > 6. ☁️ **Terraform の初期化** (`terraform init`)
+> 7. 🪝 **Git Pre-commit フックの自動有効化** (`git config core.hooksPath .githooks`)
 >
 > ※ `mise.toml` の環境変数設定により、`~/.local/bin` や `~/.cargo/bin` への PATH も mise タスク内で自動的に解決されるため、環境変数 PATH の手動設定も不要です。
 
@@ -57,26 +62,32 @@ mise run setup
 ## 4. ローカル開発環境の起動とテスト
 
 ### 4.1 バックエンド（Lambda）の起動
+
 ```bash
 mise run dev:back
 ```
+
 > `http://127.0.0.1:9000/lambda-url` でローカルAPIがリッスン状態になる。
 
 ### 4.2 フロントエンド（Vite）の起動
+
 ```bash
 mise run dev:front
 ```
+
 > `http://localhost:5173` で開発サーバーが起動する。
 
 **環境変数ファイルの設定 (`.env`)**
 ローカルでバックエンドとフロントエンドを連携させる場合、各ディレクトリに `.env` を作成する。
 
 **`frontend/.env`** (ローカル開発用設定)
+
 ```env
 VITE_API_URL=http://localhost:9000/lambda-url
 ```
 
 **`backend/.env`** (ローカル開発用設定)
+
 ```env
 APP_API_KEY=your-local-api-key
 
@@ -85,8 +96,10 @@ APP_API_KEY=your-local-api-key
 #GEMINI_API_KEY=AIzaSy-xxxxxxxxxxxxxxxx
 #TAVILY_API_KEY=tvly-xxxxxxxxxxxxxxxx
 ```
+
 > **📝 メモ: ダミーモードが作動する条件**
 > 無駄なAPIトークンの消費を防ぐため、以下のいずれかに該当する場合は Gemini / Tavily API と通信せず、固定のダミーテキストを返却する。
+>
 > 1. フロントエンドで選択・入力したトピック名が `test` または `dummy` で始まる場合
 > 2. Gemini APIキーが未設定（空文字、または初期値 `CHANGE_ME_GEMINI_KEY`）の場合
 
@@ -94,6 +107,7 @@ APP_API_KEY=your-local-api-key
 （※確認が終わったら `frontend/.env` の `VITE_API_URL` を元のAWSエンドポイントに戻してください）
 
 ### 4.3 自動テストとコードカバレッジの実行 (Unit, Mock & E2E Tests)
+
 本プロジェクトでは、外部ネットワーク通信を行わず安全かつ高速にバックエンド（Rust）、フロントエンド単体・コンポーネント（Vitest）、および実ブラウザによるE2E（Playwright）の全テストを一括実行できる。
 
 バックエンド側では **ターミナルへのカバレッジサマリー出力** と **HTMLカバレッジレポートの自動生成** が行われる。
@@ -111,27 +125,32 @@ mise run test:e2e     # フロントエンド（Playwright）E2Eテストのみ
 
 > **バックエンド HTMLカバレッジレポートのブラウザ閲覧**
 > 生成されたレポート（行ごとの網羅状況・カラーハイライト）は以下で直接開くことができる：
+>
 > ```bash
 > xdg-open backend/target/llvm-cov/html/index.html
 > ```
 
 > **フロントエンドのウォッチモード起動**
 > フロントエンド開発中に単体テストを自動再実行したい場合：
+>
 > ```bash
 > cd frontend && npm run test:watch
 > ```
 
 #### 🎭 Playwright E2E テストの画面表示・デバッグ実行
+
 Playwright では、画面を表示しながらのテストやステップ実行が簡単に行える。
 
 1. **インタラクティブ UI モード（推奨 🌟）**
    GUI ダッシュボードが立ち上がり、タイムトラベル（各ステップのDOM・画面遷移・通信の再現）やテストの個別再生が可能：
+
    ```bash
    mise run test:e2e --ui
    ```
 
 2. **Headed モード（実際のブラウザ画面を眺める）**
    実際の Chromium ウィンドウが開き、自動入力・クリックの様子がリアルタイムに描画される：
+
    ```bash
    mise run test:e2e --headed
 
@@ -152,6 +171,29 @@ Playwright では、画面を表示しながらのテストやステップ実行
 
 > ※ WSL2 環境では、GUI サポート（WSLg）により自動的に Windows 側にブラウザやダッシュボード画面が表示されます。終了時はウィンドウを閉じるか、ターミナルで `Ctrl + C` を押してください。
 
+### 4.4 コード・ドキュメント整形、コミット前チェック、CI実行
+
+本プロジェクトでは、Rust・Terraform・TypeScript/React・Markdownドキュメントの一括フォーマット、コミット前の品質チェック（Git Hook連動）、およびCIパイプラインを `mise` タスクとして統合している。
+
+```bash
+# 1. ドキュメント・コード・Terraform定義の一括フォーマット整形
+mise run fmt
+
+# フォーマット差分チェックのみ行う場合（ファイルを書き換えない）
+mise run fmt --check
+
+# 2. コミット前チェック（シークレット混入防止、フォーマット検証、Clippy、Terraform検証、ESLint、型チェック）
+# ※ git commit 実行時に .githooks/pre-commit から自動的に呼び出される
+mise run pre-commit
+
+# 3. 本番ビルドの一括実行（バックエンド Lambda ＋ フロントエンド Vite）
+mise run build:all
+# 個別ビルド: mise run build:back / mise run build:front
+
+# 4. CI パイプラインの一括実行（pre-commitチェック ＋ 全テスト・カバレッジ・E2E ＋ 本番ビルド検証）
+mise run ci
+```
+
 ---
 
 ## 5. 本番環境 (AWS) へのデプロイ
@@ -165,11 +207,14 @@ mise run deploy:all
 ```
 
 > **各デプロイを個別に行いたい場合**
+>
 > - バックエンド・インフラのみ: `mise run deploy:infra`
 > - フロントエンドのみ: `mise run deploy:front`
 
 ### 5.4 AWS環境の設定 (APIキー・シークレット)
+
 デプロイ後、AWSコンソールで Systems Manager (パラメーターストア) を開き、各パラメータの値を本番用の値に変更して保存する。
+
 1. **`/eng-app/api-key`**: フロントエンドから呼び出す際の共通パスワードとなる文字列（例: `my-super-secret-key-123`）を設定。
 2. **`/eng-app/gemini-api-key`**: Google AI Studio で取得した Gemini APIキー を設定。
 3. **`/eng-app/tavily-api-key`**: [Tavily](https://app.tavily.com/) で無料取得した Tavily APIキー（Web検索機能用）を設定。

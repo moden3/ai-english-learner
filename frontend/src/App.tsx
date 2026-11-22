@@ -1,34 +1,28 @@
-import { useState, useEffect } from 'react'
-import './index.css'
-import TopicManager from './components/TopicManager'
-import VocabularyManager from './components/VocabularyManager'
-import TextGenerator from './components/TextGenerator'
-import Login from './components/Login'
+import { useState } from 'react';
+import './index.css';
+import TopicManager from './components/TopicManager';
+import VocabularyManager from './components/VocabularyManager';
+import TextGenerator from './components/TextGenerator';
+import Login from './components/Login';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('generate')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-
-  // 起動時にsessionStorageからAPIキーを確認
-  useEffect(() => {
-    const key = sessionStorage.getItem('api_key')
-    if (key) {
-      setIsAuthenticated(true)
-    }
-  }, [])
+  const [activeTab, setActiveTab] = useState('generate');
+  const [isAuthenticated, setIsAuthenticated] = useState(() =>
+    Boolean(sessionStorage.getItem('api_key'))
+  );
 
   const handleLogin = (key: string) => {
-    sessionStorage.setItem('api_key', key)
-    setIsAuthenticated(true)
-  }
+    sessionStorage.setItem('api_key', key);
+    setIsAuthenticated(true);
+  };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('api_key')
-    setIsAuthenticated(false)
-  }
+    sessionStorage.removeItem('api_key');
+    setIsAuthenticated(false);
+  };
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
@@ -38,32 +32,44 @@ function App() {
         <h1 className="gradient-text" style={{ fontSize: '24px', letterSpacing: '-0.5px' }}>
           ENG-APP
         </h1>
-        
+
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-          <button 
+          <button
             className={`btn-glass ${activeTab === 'generate' ? 'active' : ''}`}
             onClick={() => setActiveTab('generate')}
-            style={activeTab === 'generate' ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' } : {}}
+            style={
+              activeTab === 'generate'
+                ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' }
+                : {}
+            }
           >
             English Generator
           </button>
-          <button 
+          <button
             className={`btn-glass ${activeTab === 'topics' ? 'active' : ''}`}
             onClick={() => setActiveTab('topics')}
-            style={activeTab === 'topics' ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' } : {}}
+            style={
+              activeTab === 'topics'
+                ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' }
+                : {}
+            }
           >
             Topic Manager
           </button>
-          <button 
+          <button
             className={`btn-glass ${activeTab === 'vocabulary' ? 'active' : ''}`}
             onClick={() => setActiveTab('vocabulary')}
-            style={activeTab === 'vocabulary' ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' } : {}}
+            style={
+              activeTab === 'vocabulary'
+                ? { background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' }
+                : {}
+            }
           >
             Vocabulary List
           </button>
 
           {/* Logout Button */}
-          <button 
+          <button
             className="btn-glass"
             onClick={handleLogout}
             style={{ marginTop: 'auto', borderColor: 'rgba(255,100,100,0.3)', color: '#ff8888' }}
@@ -86,7 +92,7 @@ function App() {
         {activeTab === 'vocabulary' && <VocabularyManager />}
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

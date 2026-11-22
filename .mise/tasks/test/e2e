@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Run frontend End-to-End tests (Playwright)"
+#MISE description="Run frontend End-to-End tests (Playwright)"
 #USAGE arg "[args]..." help="Options to pass to Playwright"
 set -euo pipefail
 

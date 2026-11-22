@@ -9,7 +9,7 @@ resource "aws_lambda_function" "generate_text" {
   function_name    = "eng-app-generate-text"
   role             = aws_iam_role.lambda_exec_role.arn
   handler          = "bootstrap"
-  runtime          = "provided.al2023" 
+  runtime          = "provided.al2023"
   filename         = data.archive_file.generate_text_zip.output_path
   source_code_hash = data.archive_file.generate_text_zip.output_base64sha256
   timeout          = 30 # AIの呼び出しがあるため少し長めに設定
@@ -68,4 +68,21 @@ resource "aws_lambda_permission" "apigw_vocabulary" {
   function_name = aws_lambda_function.vocabulary.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+# ========== CloudWatch Logs (ログ保持期間を14日に制限して課金を防止) ==========
+
+resource "aws_cloudwatch_log_group" "generate_text" {
+  name              = "/aws/lambda/${aws_lambda_function.generate_text.function_name}"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "topics" {
+  name              = "/aws/lambda/${aws_lambda_function.topics.function_name}"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "vocabulary" {
+  name              = "/aws/lambda/${aws_lambda_function.vocabulary.function_name}"
+  retention_in_days = 14
 }

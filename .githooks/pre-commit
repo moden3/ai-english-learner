@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Ensure mise and cargo are in PATH when triggered from GUI Git clients or IDE
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+echo "🪝 Running git pre-commit hook via mise..."
+mise run pre-commit

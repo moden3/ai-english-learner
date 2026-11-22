@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Run full CI pipeline (pre-commit checks, all unit/component/E2E tests, and production builds)"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo "======================================================================"
+echo "🚀 Starting CI Pipeline"
+echo "======================================================================"
+
+echo ""
+echo "▶️ Step 1: Pre-commit Quality & Format Checks (mise run pre-commit)"
+mise run pre-commit
+
+echo ""
+echo "▶️ Step 2: Automated Test Suite (Backend Coverage, Frontend Unit & E2E)"
+mise run test:all
+
+echo ""
+echo "▶️ Step 3: Production Build Verification (Backend & Frontend)"
+mise run build:all
+
+echo ""
+echo "======================================================================"
+echo "🎉 CI Pipeline completed successfully!"
+echo "======================================================================"

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-ssr/
+target/
+.terraform/
+playwright-report/
+test-results/
+package-lock.json
+Cargo.lock
+*.zip
+*.tfstate*

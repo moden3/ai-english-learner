@@ -39,13 +39,18 @@ describe('TopicManager Component', () => {
 
   it('adds a new topic when submitted and reloads list', async () => {
     const initialTopics = [{ id: '1', name: 'Topic 1' }];
-    const afterAddTopics = [{ id: '1', name: 'Topic 1' }, { id: '2', name: 'New Science Topic' }];
+    const afterAddTopics = [
+      { id: '1', name: 'Topic 1' },
+      { id: '2', name: 'New Science Topic' },
+    ];
 
     vi.spyOn(api, 'fetchTopics')
       .mockResolvedValueOnce(initialTopics)
       .mockResolvedValueOnce(afterAddTopics);
 
-    const addTopicSpy = vi.spyOn(api, 'addTopic').mockResolvedValueOnce({ success: true } as any);
+    const addTopicSpy = vi
+      .spyOn(api, 'addTopic')
+      .mockResolvedValueOnce({ id: '2', name: 'New Science Topic' });
     const user = userEvent.setup();
 
     render(<TopicManager />);
@@ -83,11 +88,9 @@ describe('TopicManager Component', () => {
 
   it('deletes a topic when Delete is clicked and user confirms', async () => {
     const initialTopics = [{ id: 'del-1', name: 'Topic to delete' }];
-    vi.spyOn(api, 'fetchTopics')
-      .mockResolvedValueOnce(initialTopics)
-      .mockResolvedValueOnce([]);
+    vi.spyOn(api, 'fetchTopics').mockResolvedValueOnce(initialTopics).mockResolvedValueOnce([]);
 
-    const deleteSpy = vi.spyOn(api, 'deleteTopic').mockResolvedValueOnce({ success: true } as any);
+    const deleteSpy = vi.spyOn(api, 'deleteTopic').mockResolvedValueOnce({});
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
 
