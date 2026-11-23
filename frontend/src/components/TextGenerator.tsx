@@ -63,7 +63,11 @@ export default function TextGenerator() {
       setActiveTab('analysis');
     } catch (err) {
       console.error(err);
-      alert('Failed to analyze text.');
+      const message =
+        err instanceof Error && err.message.includes('503')
+          ? err.message.replace(/^API Error 503:\s*/, '')
+          : 'Failed to analyze text.';
+      alert(message);
     } finally {
       setIsAnalyzing(false);
     }

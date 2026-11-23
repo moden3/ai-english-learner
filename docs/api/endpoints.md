@@ -131,13 +131,13 @@ graph LR
 
 ### 3.3 主なHTTPエラーステータス
 
-| ステータス                  | 原因                                                               | メッセージ / 挙動                                              |
-| :-------------------------- | :----------------------------------------------------------------- | :------------------------------------------------------------- |
-| `400 Bad Request`           | リクエストボディが不正                                             | `"Invalid Request Body"`                                       |
-| `401 Unauthorized`          | `x-api-key` ヘッダーが未指定または不一致                           | `"Unauthorized"`                                               |
-| `405 Method Not Allowed`    | POST 以外のHTTPメソッド                                            | `"Method Not Allowed"`                                         |
-| `503 Service Unavailable`   | `use_web_search: true` 時にTavily検索が失敗（エラーまたは結果0件） | `"Web search failed. Please try again or disable web search."` |
-| `500 Internal Server Error` | Gemini APIエラーまたは通信エラー                                   | `"Gemini API returned an error"`                               |
+| ステータス                  | 原因                                                                                                                                                | メッセージ / 挙動                                                                            |
+| :-------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
+| `400 Bad Request`           | リクエストボディが不正                                                                                                                              | `"Invalid Request Body"`                                                                     |
+| `401 Unauthorized`          | `x-api-key` ヘッダーが未指定または不一致                                                                                                            | `"Unauthorized"`                                                                             |
+| `405 Method Not Allowed`    | POST 以外のHTTPメソッド                                                                                                                             | `"Method Not Allowed"`                                                                       |
+| `503 Service Unavailable`   | `use_web_search: true` 時にTavily検索が失敗（エラーまたは結果0件）、またはGemini APIがリトライ・フォールバック後も高負荷（503/429）で応答不能な場合 | `"Web search failed..."` または `"Gemini AI is currently experiencing high demand (503)..."` |
+| `500 Internal Server Error` | Gemini APIエラーまたは通信エラー                                                                                                                    | `"Gemini API returned an error"`                                                             |
 
 ---
 
@@ -197,9 +197,9 @@ graph LR
 
 ### 4.2 Google Gemini API（英文記事生成・構文解析）
 
-- **呼び出し元**: `backend/src/bin/generate_text.rs` (`function_handler`)
-- **使用モデル**: `gemini-3.5-flash-lite`
-- **エンドポイント**: `POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=<GEMINI_API_KEY>`
+- **呼び出し元**: `backend/src/bin/generate_text.rs` (`call_gemini_with_retry`)
+- **使用モデル**: プライマリ `gemini-3.5-flash-lite`（高負荷 `503`/`429` 発生時はリトライ後に `gemini-3.5-flash` へ自動フォールバック）
+- **エンドポイント**: `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent?key=<GEMINI_API_KEY>`
 - **認証方式**: URLクエリパラメータ `key=<GEMINI_API_KEY>`
 
 **リクエストボディ**:
