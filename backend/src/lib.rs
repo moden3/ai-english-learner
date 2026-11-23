@@ -85,29 +85,47 @@ pub fn validate_api_key(req: &Request, expected_key: &str) -> bool {
     !provided_key.is_empty() && provided_key == expected_key
 }
 
-/// 最新ニュース記事リストをGeminiプロンプト用コンテキスト文字列と代表URLに整形する
-/// 戻り値: (news_context_string, source_url)
+/// 最新ニュース記事リストから1件を選定し、Geminiプロンプト用コンテキスト文字列と参照元URLに整形する
+///
+/// 【単一記事フォーカスの設計理由】
+/// 複数の異なるニュース記事を結合して150〜250語の短い英文にまとめさせると、
+/// 話題が分散して起承転結のない散漫な文章になり、さらに `source_url` と本文の内容が乖離してしまう。
+/// そのため、取得した候補記事の中から「本文が十分に充実している（100文字以上の）記事」を優先して
+/// ランダムに1件だけを選び出し、最大1000文字の十分なコンテキストと1対1で一致する `source_url` を返す。
 pub fn format_news_context(results: &[TavilyResult]) -> (String, String) {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as usize)
+        .unwrap_or(0);
+    format_news_context_with_seed(results, seed)
+}
+
+/// テストで決定的な検証を行えるよう、選択シード値を注入可能にした内部関数
+pub fn format_news_context_with_seed(results: &[TavilyResult], seed: usize) -> (String, String) {
     if results.is_empty() {
         return (String::new(), String::new());
     }
 
-    let source_url = results[0].url.clone();
-    let news_context = results
+    // 本文が極端に短い（100文字未満の）スニペット記事を除外した候補リストを作成
+    // （すべて100文字未満だった場合は全記事を候補にする）
+    let rich_candidates: Vec<&TavilyResult> = results
         .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let truncated_content: String = r.content.chars().take(400).collect();
-            format!(
-                "[{}] Title: {}\n    URL: {}\n    Content: {}",
-                i + 1,
-                r.title,
-                r.url,
-                truncated_content
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
+        .filter(|r| r.content.chars().count() >= 100)
+        .collect();
+
+    let selected = if !rich_candidates.is_empty() {
+        rich_candidates[seed % rich_candidates.len()]
+    } else {
+        &results[seed % results.len()]
+    };
+
+    let source_url = selected.url.clone();
+    // 1件に集中するため、従来の400文字から最大1000文字までコンテキストを拡大
+    let truncated_content: String = selected.content.chars().take(1000).collect();
+    let news_context = format!(
+        "Title: {}\nURL: {}\nContent: {}",
+        selected.title, selected.url, truncated_content
+    );
 
     (news_context, source_url)
 }
@@ -120,9 +138,9 @@ pub fn build_generate_prompt(
 ) -> String {
     match (news_context, source_url) {
         (Some(context), Some(url)) => format!(
-            "You are an English teacher. Based on the following latest news articles retrieved from the web, write a short, highly professional business English article (between 150 to 250 words) about '{}' suitable for upper-intermediate to advanced business English learners (TOEIC 800+, CEFR B2-C1). Incorporate practical and advanced business vocabulary from the news context. Do not fabricate facts; base the article on the provided news content.
+            "You are an English teacher. Based on the following single latest news article retrieved from the web, write a short, highly professional business English article (between 150 to 250 words) about '{}' suitable for upper-intermediate to advanced business English learners (TOEIC 800+, CEFR B2-C1). Focus deeply on this single news story and structure the article with a clear narrative flow (introduction/background, key developments, and business implications). Incorporate practical and advanced business vocabulary from the news context. Do not fabricate facts; base the article strictly on the provided news content.
 
---- Latest News Context ---
+--- Latest News Article ---
 {}
 ---
 
@@ -292,34 +310,75 @@ mod tests {
     }
 
     #[test]
-    fn test_format_news_context_truncation_and_url() {
-        let long_text = "A".repeat(500);
+    fn test_format_news_context_selects_single_article_and_truncates_at_1000_chars() {
+        let long_text = "A".repeat(1200);
         let results = vec![
             TavilyResult {
-                title: "First News".into(),
+                title: "First Rich News".into(),
                 content: long_text,
                 url: "https://example.com/first".into(),
             },
             TavilyResult {
-                title: "Second News".into(),
-                content: "Short content".into(),
+                title: "Second Short News".into(),
+                content: "Too short (< 100 chars)".into(),
                 url: "https://example.com/second".into(),
             },
         ];
 
+        // 2件目は100文字未満のためフィルタ除外され、必ず1件目の充実した記事が選ばれる
         let (context, source_url) = format_news_context(&results);
         assert_eq!(source_url, "https://example.com/first");
-        assert!(context.contains("[1] Title: First News"));
-        assert!(context.contains("[2] Title: Second News"));
-        // 400文字でトランケーションされているか確認
-        assert!(!context.contains(&"A".repeat(401)));
-        assert!(context.contains(&"A".repeat(400)));
+        assert!(context.contains("Title: First Rich News"));
+        // 複数の記事が混ざっていないこと（2件目が含まれないこと）を確認
+        assert!(!context.contains("Second Short News"));
+        // 1000文字でトランケーションされているか確認
+        assert!(!context.contains(&"A".repeat(1001)));
+        assert!(context.contains(&"A".repeat(1000)));
+    }
+
+    #[test]
+    fn test_format_news_context_with_seed_rotates_among_rich_articles() {
+        let results = vec![
+            TavilyResult {
+                title: "Article One".into(),
+                content: "B".repeat(150),
+                url: "https://example.com/1".into(),
+            },
+            TavilyResult {
+                title: "Article Two".into(),
+                content: "C".repeat(150),
+                url: "https://example.com/2".into(),
+            },
+        ];
+
+        let (ctx0, url0) = format_news_context_with_seed(&results, 0);
+        assert_eq!(url0, "https://example.com/1");
+        assert!(ctx0.contains("Title: Article One"));
+        assert!(!ctx0.contains("Title: Article Two"));
+
+        let (ctx1, url1) = format_news_context_with_seed(&results, 1);
+        assert_eq!(url1, "https://example.com/2");
+        assert!(ctx1.contains("Title: Article Two"));
+        assert!(!ctx1.contains("Title: Article One"));
+    }
+
+    #[test]
+    fn test_format_news_context_fallback_when_all_articles_are_short() {
+        let results = vec![TavilyResult {
+            title: "Short Article".into(),
+            content: "Short content".into(),
+            url: "https://example.com/short".into(),
+        }];
+
+        let (context, source_url) = format_news_context_with_seed(&results, 0);
+        assert_eq!(source_url, "https://example.com/short");
+        assert!(context.contains("Title: Short Article"));
     }
 
     #[test]
     fn test_format_news_context_multibyte_utf8_does_not_panic() {
-        // マルチバイト文字（’ や — や日本語）が400バイト境界をまたいでもパニックしないことを検証
-        let multibyte_text = "’—€あ".repeat(150); // 600 chars (> 400 bytes)
+        // マルチバイト文字（’ や — や日本語）が1000文字境界をまたいでもパニックしないことを検証
+        let multibyte_text = "’—€あ".repeat(300); // 1200 chars
         let results = vec![TavilyResult {
             title: "Multibyte News".into(),
             content: multibyte_text,
@@ -328,8 +387,8 @@ mod tests {
 
         let (context, source_url) = format_news_context(&results);
         assert_eq!(source_url, "https://example.com/utf8");
-        assert!(context.contains(&"’—€あ".repeat(100)));
-        assert!(!context.contains(&"’—€あ".repeat(101)));
+        assert!(context.contains(&"’—€あ".repeat(250))); // 1000 chars
+        assert!(!context.contains(&"’—€あ".repeat(251))); // 1004 chars
     }
 
     #[test]
