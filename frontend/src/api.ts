@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 if (!API_URL) {
   console.warn('VITE_API_URL is missing. Check your .env file.');

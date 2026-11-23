@@ -44,7 +44,11 @@ export default function TextGenerator() {
       setResult(res);
     } catch (err) {
       console.error(err);
-      alert('Failed to generate text. Check console for details.');
+      const message =
+        err instanceof Error && err.message.includes('503')
+          ? err.message.replace(/^API Error 503:\s*/, '')
+          : 'Failed to generate text. Check console for details.';
+      alert(message);
     } finally {
       setIsGenerating(false);
     }

@@ -121,6 +121,86 @@ async fn call_tavily_search(
     }
 }
 
+/// Google Gemini API を呼び出し、生成された JSON 文字列を返す。
+/// Google 側のサーバー一時過負荷（503 Service Unavailable）やレート制限（429）が発生した場合は、
+/// 指数バックオフ（1秒 → 2秒）で最大3回まで自動リトライを行い、一時的なスパイク障害を吸収する。
+async fn call_gemini_with_retry(
+    http_client: &HttpClient,
+    gemini_url: &str,
+    request_body: &serde_json::Value,
+    max_attempts: u32,
+    base_delay_ms: u64,
+) -> Result<String, (u16, String)> {
+    let mut last_status = 500;
+    let mut last_message = "Internal Server Error".to_string();
+
+    for attempt in 1..=max_attempts {
+        match http_client.post(gemini_url).json(request_body).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    match resp.json::<GeminiResponse>().await {
+                        Ok(gemini_resp) => {
+                            let generated_json_text = gemini_resp
+                                .candidates
+                                .and_then(|c| c.into_iter().next())
+                                .and_then(|c| c.content.parts.into_iter().next())
+                                .map(|p| p.text)
+                                .unwrap_or_else(|| "{}".to_string());
+                            return Ok(generated_json_text);
+                        }
+                        Err(e) => {
+                            println!("Gemini response parse error: {:?}", e);
+                            return Err((500, "Failed to parse Gemini API response".to_string()));
+                        }
+                    }
+                }
+
+                let code = status.as_u16();
+                let err_text = resp.text().await.unwrap_or_default();
+                println!(
+                    "Gemini API Error Response (attempt {}/{}, status {}): {}",
+                    attempt, max_attempts, code, err_text
+                );
+
+                last_status = if code == 503 || code == 429 { 503 } else { 500 };
+                last_message = if code == 503 {
+                    "Gemini AI is currently experiencing high demand (503). Please try again in a few seconds.".to_string()
+                } else if code == 429 {
+                    "Gemini AI rate limit reached (429). Please wait a moment and try again."
+                        .to_string()
+                } else {
+                    "Gemini API returned an error".to_string()
+                };
+
+                // 503 (UNAVAILABLE) または 429 (RESOURCE_EXHAUSTED) の場合のみリトライ
+                if (code == 503 || code == 429) && attempt < max_attempts {
+                    let delay = base_delay_ms * (1 << (attempt - 1));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+                break;
+            }
+            Err(e) => {
+                println!(
+                    "HTTP Request Failed (attempt {}/{}): {:?}",
+                    attempt, max_attempts, e
+                );
+                last_status = 500;
+                last_message = "Internal Server Error".to_string();
+                if attempt < max_attempts {
+                    let delay = base_delay_ms * (1 << (attempt - 1));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+
+    Err((last_status, last_message))
+}
+
 /// GenerateText API のメインハンドラ
 async fn function_handler(
     event: Request,
@@ -249,47 +329,21 @@ async fn function_handler(
         }
     });
 
-    let res = http_client
-        .post(&gemini_url)
-        .json(&request_body)
-        .send()
-        .await;
+    match call_gemini_with_retry(&http_client, &gemini_url, &request_body, 3, 1000).await {
+        Ok(generated_json_text) => {
+            let out: serde_json::Value = extract_json_payload(&generated_json_text)
+                .unwrap_or_else(|_| json!({ "error": "Failed to parse AI response" }));
 
-    match res {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                let gemini_resp: GeminiResponse = resp.json().await?;
-                let generated_json_text = gemini_resp
-                    .candidates
-                    .and_then(|c| c.into_iter().next())
-                    .and_then(|c| c.content.parts.into_iter().next())
-                    .map(|p| p.text)
-                    .unwrap_or_else(|| "{}".to_string());
-
-                let out: serde_json::Value = extract_json_payload(&generated_json_text)
-                    .unwrap_or_else(|_| json!({ "error": "Failed to parse AI response" }));
-
-                Ok(Response::builder()
-                    .status(200)
-                    .header("content-type", "application/json")
-                    .body(Body::Text(serde_json::to_string(&out).unwrap()))
-                    .expect("failed to render response"))
-            } else {
-                let err_text = resp.text().await?;
-                println!("Gemini API Error Response: {}", err_text);
-                Ok(Response::builder()
-                    .status(500)
-                    .body(Body::Text("Gemini API returned an error".into()))
-                    .expect("failed to render response"))
-            }
-        }
-        Err(e) => {
-            println!("HTTP Request Failed: {:?}", e);
             Ok(Response::builder()
-                .status(500)
-                .body(Body::Text("Internal Server Error".into()))
+                .status(200)
+                .header("content-type", "application/json")
+                .body(Body::Text(serde_json::to_string(&out).unwrap()))
                 .expect("failed to render response"))
         }
+        Err((status_code, err_msg)) => Ok(Response::builder()
+            .status(status_code)
+            .body(Body::Text(err_msg))
+            .expect("failed to render response")),
     }
 }
 
@@ -771,5 +825,72 @@ mod tests {
         .expect("handler failed");
 
         assert_eq!(response.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_gemini_503_retries_and_succeeds() {
+        let mock_server = MockServer::start().await;
+
+        // 1回目は503 UNAVAILABLEを返し、2回目のリトライで200 OKを返すシナリオをテスト
+        Mock::given(method("POST"))
+            .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+            .respond_with(ResponseTemplate::new(503).set_body_string(
+                r#"{"error": {"code": 503, "message": "high demand", "status": "UNAVAILABLE"}}"#,
+            ))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        let gemini_body = json!({
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": "{\"text\": \"Recovered after retry!\", \"source_url\": null}"
+                    }]
+                }
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(gemini_body))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let http_client = HttpClient::new();
+        let gemini_url = format!(
+            "{}/v1beta/models/gemini-3.5-flash-lite:generateContent?key=test",
+            mock_server.uri()
+        );
+        let req_body = json!({"contents": []});
+
+        let res = call_gemini_with_retry(&http_client, &gemini_url, &req_body, 3, 10).await;
+        assert!(res.is_ok());
+        assert!(res.unwrap().contains("Recovered after retry!"));
+    }
+
+    #[tokio::test]
+    async fn test_gemini_persistent_503_returns_503_after_retries() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("high demand"))
+            .expect(3)
+            .mount(&mock_server)
+            .await;
+
+        let http_client = HttpClient::new();
+        let gemini_url = format!(
+            "{}/v1beta/models/gemini-3.5-flash-lite:generateContent?key=test",
+            mock_server.uri()
+        );
+        let req_body = json!({"contents": []});
+
+        let res = call_gemini_with_retry(&http_client, &gemini_url, &req_body, 3, 10).await;
+        assert!(res.is_err());
+        let (status, msg) = res.unwrap_err();
+        assert_eq!(status, 503);
+        assert!(msg.contains("high demand"));
     }
 }
