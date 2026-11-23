@@ -1,13 +1,23 @@
 # Web API エンドポイント仕様一覧
 
-本プロジェクト（AI英語学習アプリ）のバックエンド（Rust + AWS API Gateway）に実装されているHTTP APIの一覧です。
+本プロジェクト（AI英語学習アプリ）におけるAPI仕様の一覧です。
+前半（セクション1〜3）では**フロントエンドからバックエンド（Rust + AWS API Gateway）へ呼び出す公開API**を、後半（セクション4）では**バックエンド（Lambda）から外部・AWSサービス（Tavily, Gemini, DynamoDB, SSM）へ呼び出す内部連携API**をまとめています。
 
-## 共通仕様
+```mermaid
+graph LR
+    FE["Frontend<br/>(React SPA)"] -- "1〜3. 公開API<br/>(Header: x-api-key)" --> BE["Backend<br/>(Rust Lambda)"]
+    BE -- "4.1 ニュース検索<br/>(Bearer Token)" --> Tavily["Tavily AI Search API"]
+    BE -- "4.2 記事生成・解析<br/>(Query: ?key=...)" --> Gemini["Google Gemini API"]
+    BE -- "4.3 データ永続化<br/>(AWS SigV4)" --> DDB["Amazon DynamoDB"]
+    BE -- "4.4 起動時キー取得<br/>(AWS SigV4)" --> SSM["AWS SSM Parameter Store"]
+```
+
+## 共通仕様（フロントエンド ⇔ バックエンド間）
 
 - **認証**: すべてのエンドポイントは、リクエストヘッダーに `x-api-key` を付与する必要があります。
 - **ベースURL**: 環境によって異なります。
   - ローカル開発環境: `http://localhost:9000/lambda-url`
-  - 本番環境 (AWS): API GatewayのエンドポイントURL
+  - 本番環境 (AWS): API GatewayのエンドポイントURL (`https://<api-id>.execute-api.ap-northeast-1.amazonaws.com`)
 
 ---
 
@@ -128,3 +138,126 @@
 | `405 Method Not Allowed`    | POST 以外のHTTPメソッド                                            | `"Method Not Allowed"`                                         |
 | `503 Service Unavailable`   | `use_web_search: true` 時にTavily検索が失敗（エラーまたは結果0件） | `"Web search failed. Please try again or disable web search."` |
 | `500 Internal Server Error` | Gemini APIエラーまたは通信エラー                                   | `"Gemini API returned an error"`                               |
+
+---
+
+## 4. バックエンド内部連携 API（外部 AI・検索・AWS サービス）
+
+バックエンド（Rust Lambda）の内部から `reqwest` または `aws-sdk-rust` を用いて呼び出している外部APIおよびAWSマネージドサービスの通信仕様です。
+（単体テストでは、これらすべてのエンドポイントURLをローカルの `wiremock::MockServer` に差し替えて検証しています）
+
+### 4.1 Tavily AI Search API（最新ニュース検索）
+
+- **呼び出し元**: `backend/src/bin/generate_text.rs` (`call_tavily_search`)
+- **発火条件**: `/generate_text` で `action: "generate"` かつ `use_web_search: true` が指定された場合（ダミーモード時を除く）
+- **エンドポイント**: `POST https://api.tavily.com/search`
+- **認証方式**: HTTPヘッダー `Authorization: Bearer <TAVILY_API_KEY>`
+
+**リクエストボディ**:
+
+```json
+{
+  "query": "<topic_name> latest news",
+  "topic": "news",
+  "days": 3,
+  "max_results": 3,
+  "include_answer": false
+}
+```
+
+| フィールド       | 設定値                  | 意図・役割                                                   |
+| :--------------- | :---------------------- | :----------------------------------------------------------- |
+| `query`          | `"<topic> latest news"` | 指定トピックの最新ニュースに焦点を当てる検索クエリ           |
+| `topic`          | `"news"`                | 一般Webページではなくニュース記事に特化して検索              |
+| `days`           | `3`                     | 直近3日以内に公開された新鮮なニュースのみに限定              |
+| `max_results`    | `3`                     | LLMプロンプトのトークン肥大化を防ぎつつ複数ソースを参照      |
+| `include_answer` | `false`                 | Tavily側のAI要約を無効化し、検索結果の生スニペットのみを取得 |
+
+**レスポンス例（抜粋・パース対象フィールド）**:
+
+```json
+{
+  "results": [
+    {
+      "title": "Quantum Leap in AI",
+      "url": "https://tech.example.com/ai-quantum",
+      "content": "Researchers have discovered new AI paradigms..."
+    }
+  ]
+}
+```
+
+> **バックエンドでの後続処理 (`format_news_context`)**:
+>
+> - 取得した各記事の `content` を最大 **400文字**（UTF-8文字単位）に切り詰めてプロンプト内の `--- Latest News Context ---` に埋め込みます。
+> - 先頭記事（`results[0].url`）を代表の参照元URL（`source_url`）として採用します。
+> - 通信エラーまたは `results` が空（0件）の場合は、曖昧なフォールバックを行わずフロントエンドへ `503 Service Unavailable` を返します。
+
+---
+
+### 4.2 Google Gemini API（英文記事生成・構文解析）
+
+- **呼び出し元**: `backend/src/bin/generate_text.rs` (`function_handler`)
+- **使用モデル**: `gemini-3.5-flash-lite`
+- **エンドポイント**: `POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=<GEMINI_API_KEY>`
+- **認証方式**: URLクエリパラメータ `key=<GEMINI_API_KEY>`
+
+**リクエストボディ**:
+
+```json
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "<build_generate_prompt または build_analyze_prompt で生成したプロンプト文字列>"
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "temperature": 0.9,
+    "responseMimeType": "application/json"
+  }
+}
+```
+
+| 設定項目           | 設定値               | 意図・役割                                                                     |
+| :----------------- | :------------------- | :----------------------------------------------------------------------------- |
+| `temperature`      | `0.9`                | 同じトピックでも毎回多様で自然なビジネス英文記事が生成されるよう創造性を高める |
+| `responseMimeType` | `"application/json"` | Gemini の Structured Outputs（JSONモード）を強制し、構文崩れを防止する         |
+
+**レスポンス例（抜粋・パース対象フィールド）**:
+
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"text\": \"Generated business English article...\", \"source_url\": \"https://...\"}"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+> **バックエンドでの後続処理 (`extract_json_payload`)**:
+>
+> - `candidates[0].content.parts[0].text` から文字列を取り出し、万一 Markdown コードブロック（` ```json ... ``` `）が含まれていても最初の `{` から最後の `}` までを安全に抽出して JSON パースし、フロントエンドへ返却します。
+
+---
+
+### 4.3 AWS SDK 内部通信（DynamoDB / SSM Parameter Store）
+
+AWS SDK for Rust を介して行われる AWS 内部 API 通信（HTTP POST / JSON プロトコル、SigV4 署名認証）の一覧です。
+
+| 接続先サービス          | AWS API アクション | 呼び出し元                                         | 対象リソース / パラメータ                                                        | 用途                                                           |
+| :---------------------- | :----------------- | :------------------------------------------------- | :------------------------------------------------------------------------------- | :------------------------------------------------------------- |
+| **SSM Parameter Store** | `GetParameter`     | 全 Lambda の `main()` 起動時                       | `/eng-app/api-key`<br>`/eng-app/gemini-api-key`<br>`/eng-app/tavily-api-key`     | コールドスタート時にシークレットを復号取得しメモリにキャッシュ |
+| **Amazon DynamoDB**     | `Query`            | `GET /topics`<br>`GET /vocabulary`                 | Table: `eng-app-table`<br>KeyCondition: `PK = "TOPIC"` または `PK = "VOCAB"`     | トピック一覧・単語帳一覧の高速検索                             |
+| **Amazon DynamoDB**     | `PutItem`          | `POST /topics`<br>`POST /vocabulary`               | Table: `eng-app-table`<br>Item: `PK`, `SK` (`TOPIC#<uuid>` / `WORD#<uuid>`), etc | 新規トピック・新規単語の保存                                   |
+| **Amazon DynamoDB**     | `DeleteItem`       | `DELETE /topics/{id}`<br>`DELETE /vocabulary/{id}` | Table: `eng-app-table`<br>Key: `PK`, `SK`                                        | 指定IDのトピック・単語の削除                                   |
